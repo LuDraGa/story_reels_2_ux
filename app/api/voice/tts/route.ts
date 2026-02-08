@@ -121,20 +121,22 @@ export async function POST(request: Request) {
         throw new Error(`Failed to upload audio to storage: ${uploadError.message}`)
       }
 
-      console.log('[TTS] Upload successful, generating public URL...')
+      console.log('[TTS] Upload successful, generating signed URL...')
 
-      // Get public URL
-      const { data: urlData } = supabase.storage
+      // Generate signed URL (valid for 1 year = 31536000 seconds)
+      // Signed URLs work for both public and private buckets
+      const { data: urlData, error: urlError } = await supabase.storage
         .from('projects')
-        .getPublicUrl(storagePath)
+        .createSignedUrl(storagePath, 31536000) // 1 year
 
-      console.log('[TTS] Public URL generated:', urlData?.publicUrl)
+      console.log('[TTS] Signed URL generated:', urlData?.signedUrl)
 
-      if (!urlData?.publicUrl) {
-        throw new Error('Failed to get public URL for uploaded audio')
+      if (urlError || !urlData?.signedUrl) {
+        console.error('[TTS] Failed to generate signed URL:', urlError)
+        throw new Error('Failed to get signed URL for uploaded audio')
       }
 
-      audioUrl = urlData.publicUrl
+      audioUrl = urlData.signedUrl
     }
 
     // TODO: Detect audio duration using FFprobe
