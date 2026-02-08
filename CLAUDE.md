@@ -10,6 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **[docs/WORKFLOWS.md](docs/WORKFLOWS.md)**: Pipeline modules, job queue, common patterns, testing
 - **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**: Vercel deployment, GitHub Actions heartbeat
 - **[docs/SUPABASE_MIGRATIONS.md](docs/SUPABASE_MIGRATIONS.md)**: Database migrations, CLI commands, troubleshooting
+- **[docs/HEARTBEAT.md](docs/HEARTBEAT.md)**: GitHub Actions keep-alive to prevent Supabase Free tier from pausing after 7 days
 - **[docs/CODE_SEARCH.md](docs/CODE_SEARCH.md)**: Code search tools and strategies
 - **[docs/HANDOFF_GUIDE.md](docs/HANDOFF_GUIDE.md)**: How to create ideal handoff documents (based on HANDOFF_PHASE_2.md critique)
 - **[execution_docs/](execution_docs/)**: Task planning and execution tracking
