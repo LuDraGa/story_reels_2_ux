@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Import fonts from Google Fonts */
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+  :root {
+    --radius: 1.5rem;
+  }
+
+  * {
+    @apply border-primary-500;
+  }
+
+  body {
+    @apply bg-primary-100 text-secondary-500 antialiased;
+    @apply font-sans;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-display text-secondary-700;
+  }
+}
+
+@layer utilities {
+  /* Card hover effect */
+  .card-hover {
+    @apply transition-all duration-200 ease-in-out;
+    @apply hover:shadow-lg hover:-translate-y-1;
+  }
+
+  /* Text gradient utility */
+  .text-gradient {
+    @apply bg-gradient-to-r from-sage-500 via-lavender-400 to-mist-500 bg-clip-text text-transparent;
+  }
+}
