@@ -17,21 +17,42 @@ interface ExportModuleProps {
 export function ExportModule({ audioUrl, videoUrl }: ExportModuleProps) {
   const { toast } = useToast()
 
-  const handleDownloadAudio = () => {
+  const handleDownloadAudio = async () => {
     if (!audioUrl) return
 
-    // Create temporary link and trigger download
-    const link = document.createElement('a')
-    link.href = audioUrl
-    link.download = `voiceover-${Date.now()}.wav`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+    try {
+      // Fetch the audio file as a blob (works for cross-origin URLs)
+      const response = await fetch(audioUrl)
+      if (!response.ok) throw new Error('Failed to fetch audio')
 
-    toast({
-      title: 'Download started',
-      description: 'Your audio file is downloading',
-    })
+      const blob = await response.blob()
+
+      // Create blob URL (same-origin, so download attribute works)
+      const blobUrl = URL.createObjectURL(blob)
+
+      // Create temporary link and trigger download
+      const link = document.createElement('a')
+      link.href = blobUrl
+      link.download = `voiceover-${Date.now()}.wav`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+
+      // Clean up blob URL
+      URL.revokeObjectURL(blobUrl)
+
+      toast({
+        title: 'Download started',
+        description: 'Your audio file is downloading',
+      })
+    } catch (error) {
+      console.error('Download failed:', error)
+      toast({
+        title: 'Download failed',
+        description: 'Please try again',
+        variant: 'destructive',
+      })
+    }
   }
 
   const handleDownloadVideo = () => {
