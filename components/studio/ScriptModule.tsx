@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
@@ -18,6 +18,11 @@ interface ScriptModuleProps {
 export function ScriptModule({ script, onSave }: ScriptModuleProps) {
   const [text, setText] = useState(script)
   const { toast } = useToast()
+
+  // Sync local state with prop when script changes from parent
+  useEffect(() => {
+    setText(script)
+  }, [script])
 
   const handleSave = () => {
     if (text.trim() === '') {

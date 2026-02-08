@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
@@ -19,6 +19,11 @@ interface IngestModuleProps {
 export function IngestModule({ sourceText, onSave }: IngestModuleProps) {
   const [text, setText] = useState(sourceText)
   const { toast } = useToast()
+
+  // Sync local state with prop when sourceText changes from parent
+  useEffect(() => {
+    setText(sourceText)
+  }, [sourceText])
 
   const handleSave = () => {
     if (text.trim() === '') {

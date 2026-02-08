@@ -104,6 +104,14 @@ export default function ProjectPage({ params }: ProjectWorkspaceProps) {
     // TODO: Save video asset to database
   }
 
+  const handleSourceTextSave = (text: string) => {
+    setSourceText(text)
+    // Auto-copy to script if script is empty (same as one-off studio)
+    if (script === '') {
+      setScript(text)
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="space-y-8">
@@ -161,7 +169,7 @@ export default function ProjectPage({ params }: ProjectWorkspaceProps) {
         {/* Module 1: Ingest */}
         <IngestModule
           sourceText={sourceText}
-          onSave={setSourceText}
+          onSave={handleSourceTextSave}
         />
 
         {/* Module 2: Script */}
