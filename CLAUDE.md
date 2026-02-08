@@ -9,6 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **[docs/API_INTEGRATION.md](docs/API_INTEGRATION.md)**: Modal Coqui TTS API integration (CRITICAL - external API)
 - **[docs/WORKFLOWS.md](docs/WORKFLOWS.md)**: Pipeline modules, job queue, common patterns, testing
 - **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**: Vercel deployment, GitHub Actions heartbeat
+- **[docs/SUPABASE_MIGRATIONS.md](docs/SUPABASE_MIGRATIONS.md)**: Database migrations, CLI commands, troubleshooting
 - **[docs/CODE_SEARCH.md](docs/CODE_SEARCH.md)**: Code search tools and strategies
 - **[docs/HANDOFF_GUIDE.md](docs/HANDOFF_GUIDE.md)**: How to create ideal handoff documents (based on HANDOFF_PHASE_2.md critique)
 - **[execution_docs/](execution_docs/)**: Task planning and execution tracking
@@ -42,11 +43,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Database
 
-8 tables: `projects`, `source_items`, `script_versions`, `audio_assets`, `video_assets`, `background_assets`, `jobs`
+7 tables: `projects`, `source_items`, `script_versions`, `audio_assets`, `video_assets`, `background_assets`, `jobs`
 
-RLS policies required. Migration: `supabase/migrations/0001_init.sql`
+RLS policies required. Migration: `supabase/migrations/20260208211959_initial_schema.sql`
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full schema.
+**Migration Commands**: See [docs/SUPABASE_MIGRATIONS.md](docs/SUPABASE_MIGRATIONS.md) for CLI commands
+
+**Schema Details**: See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full schema
 
 ### Pipeline Modules
 
@@ -70,6 +73,13 @@ pnpm build            # Production build (USER RUNS THIS)
 pnpm lint             # Lint (YOU CAN RUN)
 pnpm type-check       # Type check (YOU CAN RUN)
 npx tsc --noEmit      # Type check (YOU CAN RUN)
+
+# Supabase Migrations (see docs/SUPABASE_MIGRATIONS.md for details)
+supabase migration list           # Check migration status (YOU CAN RUN)
+supabase db push                  # Push migrations to remote (ASK USER FIRST)
+supabase db pull                  # Pull remote schema (ASK USER FIRST)
+supabase migration new NAME       # Create new migration (YOU CAN RUN)
+supabase db remote shell          # Connect to remote DB (YOU CAN RUN)
 ```
 
 ## Critical Rules
@@ -190,7 +200,7 @@ lib/
 
 supabase/
 └── migrations/
-    └── 0001_init.sql       # Schema + RLS
+    └── 20260208211959_initial_schema.sql  # Schema + RLS
 
 execution_docs/
 ├── _active/
@@ -219,6 +229,7 @@ See `.env.example` for template.
 - **Modal API Integration**: [docs/API_INTEGRATION.md](docs/API_INTEGRATION.md) ⚠️ **READ THIS FIRST**
 - **Pipeline & Patterns**: [docs/WORKFLOWS.md](docs/WORKFLOWS.md)
 - **Deployment**: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+- **Supabase Migrations**: [docs/SUPABASE_MIGRATIONS.md](docs/SUPABASE_MIGRATIONS.md)
 - **Code Search**: [docs/CODE_SEARCH.md](docs/CODE_SEARCH.md)
 
 ## Important Notes
