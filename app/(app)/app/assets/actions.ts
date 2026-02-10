@@ -55,7 +55,7 @@ export async function createAsset(formData: FormData) {
     const storagePath = `backgrounds/${user.id}/${fileName}`
 
     const { error: uploadError } = await supabase.storage
-      .from('projects')
+      .from('backgrounds')
       .upload(storagePath, file, {
         contentType: file.type,
         upsert: false,
@@ -69,7 +69,7 @@ export async function createAsset(formData: FormData) {
     // Get public URL
     const {
       data: { publicUrl },
-    } = supabase.storage.from('projects').getPublicUrl(storagePath)
+    } = supabase.storage.from('backgrounds').getPublicUrl(storagePath)
 
     // Create database record
     const tagsArray = tags
@@ -93,7 +93,7 @@ export async function createAsset(formData: FormData) {
     if (dbError) {
       console.error('Database error:', dbError)
       // Clean up uploaded file
-      await supabase.storage.from('projects').remove([storagePath])
+      await supabase.storage.from('backgrounds').remove([storagePath])
       return { error: 'Failed to save asset' }
     }
 
@@ -135,7 +135,7 @@ export async function deleteAsset(assetId: string) {
     // Delete from storage
     // @ts-ignore
     const storagePath = asset.storage_path
-    await supabase.storage.from('projects').remove([storagePath])
+    await supabase.storage.from('backgrounds').remove([storagePath])
 
     // Delete from database
     // @ts-ignore - Supabase type inference issue

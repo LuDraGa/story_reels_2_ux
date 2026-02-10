@@ -18,6 +18,7 @@ export default function Home() {
     updateSelectedSpeaker,
     updateAudio,
     updateVideo,
+    updateCaptions,
   } = useStudioState()
 
   return (
@@ -57,6 +58,9 @@ export default function Home() {
             selectedSpeakerId={state.selectedSpeakerId}
             onSpeakerSelect={updateSelectedSpeaker}
             onAudioGenerated={updateAudio}
+            srtUrl={state.srtUrl}
+            captionMetadata={state.captionMetadata}
+            onCaptionsGenerated={updateCaptions}
           />
 
           {/* Module 4: Video (Stub) */}

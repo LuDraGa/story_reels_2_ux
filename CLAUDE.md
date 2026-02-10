@@ -4,6 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Quick Reference
 
+- **[docs/PROJECT_PROMPTS.md](docs/PROJECT_PROMPTS.md)**: Original prompts and requirements for each build phase (essential for new sessions)
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**: Tech stack, routes, database schema, Supabase setup
 - **[docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md)**: 60-30-10 colors, typography, spacing (edit one file to change all)
 - **[docs/API_INTEGRATION.md](docs/API_INTEGRATION.md)**: Modal Coqui TTS API integration (CRITICAL - external API)
@@ -104,6 +105,8 @@ supabase db remote shell          # Connect to remote DB (YOU CAN RUN)
 - Rebuild TTS engine (it already exists - integrate only)
 
 ## Workflow
+
+**Starting a new session?** Check [docs/PROJECT_PROMPTS.md](docs/PROJECT_PROMPTS.md) first to understand original requirements and project history.
 
 1. **Plan** → `execution_docs/_active/planning.md`
 2. **Execute** → `execution_docs/_active/execution.md` (track tasks)
@@ -226,6 +229,7 @@ See `.env.example` for template.
 
 ## More Details
 
+- **Project Prompts**: [docs/PROJECT_PROMPTS.md](docs/PROJECT_PROMPTS.md) - Original requirements for each phase
 - **Architecture & Schema**: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - **Modal API Integration**: [docs/API_INTEGRATION.md](docs/API_INTEGRATION.md) ⚠️ **READ THIS FIRST**
 - **Pipeline & Patterns**: [docs/WORKFLOWS.md](docs/WORKFLOWS.md)

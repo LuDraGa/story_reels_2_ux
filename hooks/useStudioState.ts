@@ -16,6 +16,14 @@ export interface StudioState {
   storagePath: string | null // Storage path in Supabase
   selectedSpeakerId: string | null // Selected TTS speaker ID
   videoUrl: string | null // Video URL (stub for now)
+  // Caption state (from WhisperX STT)
+  srtUrl: string | null // SRT caption file URL
+  transcriptionUrl: string | null // Transcription JSON URL
+  captionMetadata: {
+    wordCount?: number
+    duration?: number
+    captionCount?: number
+  } | null
 }
 
 const STORAGE_KEY = 'reel-studio-state'
@@ -74,6 +82,9 @@ function getInitialState(): StudioState {
     storagePath: null,
     selectedSpeakerId: null,
     videoUrl: null,
+    srtUrl: null,
+    transcriptionUrl: null,
+    captionMetadata: null,
   }
 }
 
@@ -155,12 +166,29 @@ export function useStudioState() {
     }))
   }, [])
 
+  // Update captions (from STT transcription)
+  const updateCaptions = useCallback(
+    (srtUrl: string, transcriptionUrl: string, metadata?: StudioState['captionMetadata']) => {
+      setState(prev => ({
+        ...prev,
+        srtUrl,
+        transcriptionUrl,
+        captionMetadata: metadata || null,
+      }))
+    },
+    []
+  )
+
   // Clear audio (for re-generation)
   const clearAudio = useCallback(() => {
     setState(prev => ({
       ...prev,
       audioUrl: null,
       storagePath: null,
+      // Also clear captions when audio is cleared
+      srtUrl: null,
+      transcriptionUrl: null,
+      captionMetadata: null,
     }))
   }, [])
 
@@ -169,6 +197,16 @@ export function useStudioState() {
     setState(prev => ({
       ...prev,
       videoUrl: null,
+    }))
+  }, [])
+
+  // Clear captions (for re-generation)
+  const clearCaptions = useCallback(() => {
+    setState(prev => ({
+      ...prev,
+      srtUrl: null,
+      transcriptionUrl: null,
+      captionMetadata: null,
     }))
   }, [])
 
@@ -182,6 +220,9 @@ export function useStudioState() {
       storagePath: null,
       selectedSpeakerId: null,
       videoUrl: null,
+      srtUrl: null,
+      transcriptionUrl: null,
+      captionMetadata: null,
     }
     setState(newState)
     saveStateToStorage(newState)
@@ -196,8 +237,10 @@ export function useStudioState() {
     updateSelectedSpeaker,
     updateAudio,
     updateVideo,
+    updateCaptions,
     clearAudio,
     clearVideo,
+    clearCaptions,
     resetState,
   }
 }

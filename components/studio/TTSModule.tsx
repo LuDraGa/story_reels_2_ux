@@ -5,6 +5,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
 import type { Speaker, AudioResponse } from '@/lib/api/coqui'
+import { CaptionPreview } from './CaptionPreview'
+import type { StudioState } from '@/hooks/useStudioState'
 
 interface TTSModuleProps {
   script: string
@@ -13,6 +15,10 @@ interface TTSModuleProps {
   selectedSpeakerId: string | null
   onSpeakerSelect: (speakerId: string) => void
   onAudioGenerated: (audioUrl: string, storagePath: string) => void
+  // Caption props
+  srtUrl: string | null
+  captionMetadata: StudioState['captionMetadata']
+  onCaptionsGenerated: (srtUrl: string, transcriptionUrl: string, metadata?: StudioState['captionMetadata']) => void
 }
 
 /**
@@ -27,10 +33,14 @@ export function TTSModule({
   selectedSpeakerId,
   onSpeakerSelect,
   onAudioGenerated,
+  srtUrl,
+  captionMetadata,
+  onCaptionsGenerated,
 }: TTSModuleProps) {
   const [speakers, setSpeakers] = useState<Speaker[]>([])
   const [isLoadingSpeakers, setIsLoadingSpeakers] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [isGeneratingCaptions, setIsGeneratingCaptions] = useState(false)
   const { toast } = useToast()
 
   // Fetch speakers on mount (with 15-day localStorage cache)
@@ -148,8 +158,63 @@ export function TTSModule({
     }
   }
 
+  const handleGenerateCaptions = async () => {
+    if (!audioUrl) return
+
+    setIsGeneratingCaptions(true)
+    try {
+      // Fetch audio file as blob
+      const audioResponse = await fetch(audioUrl)
+      if (!audioResponse.ok) {
+        throw new Error('Failed to fetch audio file')
+      }
+      const audioBlob = await audioResponse.blob()
+
+      // Create FormData for multipart upload
+      const formData = new FormData()
+      formData.append('file', audioBlob, 'audio.wav')
+      formData.append('language', 'en')
+      formData.append('sessionId', sessionId)
+
+      // Call STT API
+      const response = await fetch('/api/stt/transcribe', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to generate captions')
+      }
+
+      const data = await response.json()
+
+      // Update state with caption URLs
+      onCaptionsGenerated(
+        data.srtUrl,
+        data.transcriptionUrl,
+        data.metadata
+      )
+
+      toast({
+        title: 'Captions generated',
+        description: `${data.metadata?.captionCount || 0} captions created`,
+      })
+    } catch (error) {
+      console.error('Failed to generate captions:', error)
+      toast({
+        title: 'Caption generation failed',
+        description: error instanceof Error ? error.message : 'Please try again',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsGeneratingCaptions(false)
+    }
+  }
+
   const isEmpty = script.trim() === ''
   const canGenerate = !isEmpty && selectedSpeakerId && !isGenerating
+  const canGenerateCaptions = audioUrl && !isGeneratingCaptions && !srtUrl
 
   return (
     <Card className="w-full">
@@ -246,18 +311,59 @@ export function TTSModule({
 
             {/* Audio Preview */}
             {audioUrl && (
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-secondary-700">
-                  Preview
-                </label>
-                <audio
-                  controls
-                  src={audioUrl}
-                  className="w-full rounded-xl"
-                  preload="metadata"
-                >
-                  Your browser does not support the audio element.
-                </audio>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-secondary-700">
+                    Preview
+                  </label>
+                  <audio
+                    controls
+                    src={audioUrl}
+                    className="w-full rounded-xl"
+                    preload="metadata"
+                  >
+                    Your browser does not support the audio element.
+                  </audio>
+                </div>
+
+                {/* Generate Captions Button */}
+                {!srtUrl && (
+                  <Button
+                    onClick={handleGenerateCaptions}
+                    disabled={!canGenerateCaptions}
+                    variant="outline"
+                    className="w-full border-accent-lavender text-accent-lavender hover:bg-accent-lavender/10"
+                  >
+                    {isGeneratingCaptions ? (
+                      <>
+                        <span className="mr-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-accent-lavender border-t-transparent"></span>
+                        Generating captions...
+                      </>
+                    ) : (
+                      '+ Generate Captions (SRT)'
+                    )}
+                  </Button>
+                )}
+
+                {/* Caption Generation Loading */}
+                {isGeneratingCaptions && (
+                  <div className="rounded-xl border border-accent-lavender/20 bg-accent-lavender/5 p-4 text-center text-sm">
+                    <p className="font-medium text-accent-lavender">Transcribing audio...</p>
+                    <p className="mt-1 text-xs text-secondary-500">
+                      This may take 30-60 seconds. Please wait.
+                    </p>
+                  </div>
+                )}
+
+                {/* Caption Preview */}
+                {srtUrl && (
+                  <div className="space-y-2">
+                    <CaptionPreview
+                      srtUrl={srtUrl}
+                      metadata={captionMetadata}
+                    />
+                  </div>
+                )}
               </div>
             )}
           </>

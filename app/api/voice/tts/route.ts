@@ -82,16 +82,16 @@ export async function POST(request: Request) {
     const audioBuffer = await response.arrayBuffer()
     console.log('[TTS] Audio buffer size:', audioBuffer.byteLength)
 
-    // 4. Check if Supabase is configured (not dummy credentials)
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-    const isDummySupabase = supabaseUrl.includes('dummy-project-id')
+    // 4. Determine storage strategy: authenticated users → Supabase, anonymous → data URL
+    const isAuthenticated = !!userId
+    console.log('[TTS] User authentication status:', isAuthenticated ? 'authenticated' : 'anonymous')
 
     let audioUrl: string
     let storagePath: string
 
-    if (isDummySupabase) {
-      // Supabase not configured - return audio as base64 data URL
-      console.log('[TTS] Supabase not configured, returning audio as data URL')
+    if (!isAuthenticated) {
+      // Anonymous user (one-off studio) - return audio as base64 data URL
+      console.log('[TTS] Anonymous user, returning audio as data URL (no Supabase upload)')
 
       const base64Audio = Buffer.from(audioBuffer).toString('base64')
       audioUrl = `data:audio/wav;base64,${base64Audio}`
@@ -99,7 +99,7 @@ export async function POST(request: Request) {
 
       console.log('[TTS] Audio converted to data URL (size:', base64Audio.length, 'chars)')
     } else {
-      // Real Supabase - upload to storage
+      // Authenticated user - upload to Supabase Storage
       const supabase = await createSupabaseServerClient()
       storagePath = generateAudioStoragePath(userId, projectId, sessionId)
 
