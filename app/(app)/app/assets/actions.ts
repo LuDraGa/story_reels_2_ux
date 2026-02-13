@@ -27,7 +27,19 @@ export async function getAssets() {
     return { error: 'Failed to fetch assets', assets: [] }
   }
 
-  return { assets: data || [] }
+  // Generate public URLs for each asset
+  const assetsWithUrls = (data || []).map((asset: any) => {
+    const { data: urlData } = supabase.storage
+      .from('backgrounds')
+      .getPublicUrl(asset.storage_path)
+
+    return {
+      ...asset,
+      public_url: urlData.publicUrl,
+    }
+  })
+
+  return { assets: assetsWithUrls }
 }
 
 export async function createAsset(formData: FormData) {

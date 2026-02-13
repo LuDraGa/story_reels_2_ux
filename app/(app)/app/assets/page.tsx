@@ -10,10 +10,11 @@ import { getAssets, createAsset, deleteAsset } from './actions'
 interface Asset {
   id: string
   user_id: string
-  title: string
+  name: string
   storage_path: string
   tags: string[] | null
   created_at: string
+  public_url?: string
 }
 
 export default function AssetsPage() {
@@ -149,14 +150,28 @@ interface AssetCardProps {
 }
 
 function AssetCard({ asset, onDelete }: AssetCardProps) {
+  const [videoError, setVideoError] = useState(false)
+
   return (
     <Card className="overflow-hidden bg-primary-300 border-primary-500/20">
-      <div className="aspect-video bg-primary-200 flex items-center justify-center">
-        <span className="text-4xl text-secondary-400">🎬</span>
+      <div className="aspect-video bg-primary-200 flex items-center justify-center relative overflow-hidden">
+        {asset.public_url && !videoError ? (
+          <video
+            src={asset.public_url}
+            className="w-full h-full object-cover"
+            loop
+            muted
+            autoPlay
+            playsInline
+            onError={() => setVideoError(true)}
+          />
+        ) : (
+          <span className="text-4xl text-secondary-400">🎬</span>
+        )}
       </div>
       <div className="p-4 space-y-3">
         <h3 className="font-display text-lg font-bold text-secondary-700 truncate">
-          {asset.title}
+          {asset.name}
         </h3>
         {asset.tags && asset.tags.length > 0 && (
           <div className="flex flex-wrap gap-2">
