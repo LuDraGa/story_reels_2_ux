@@ -8,6 +8,7 @@ import { Loader2, Film, Music } from 'lucide-react'
 import { AssetSelector } from './AssetSelector'
 import { AdvancedSettings, CompositionSettings } from './AdvancedSettings'
 import { CompositionSummary } from './CompositionSummary'
+import { ASSEditorModal } from './ASSEditorModal'
 
 interface VideoModuleProps {
   audioUrl: string | null
@@ -16,6 +17,7 @@ interface VideoModuleProps {
   selectedVideos: string[]
   selectedMusic: string | null
   audioDuration?: number
+  projectId?: string
   onVideoGenerated: (videoUrl: string) => void
   onVideoSelect: (videos: string[]) => void
   onMusicSelect: (music: string | null) => void
@@ -37,6 +39,7 @@ export function VideoModule({
   selectedVideos,
   selectedMusic,
   audioDuration,
+  projectId,
   onVideoGenerated,
   onVideoSelect,
   onMusicSelect,
@@ -44,6 +47,7 @@ export function VideoModule({
   const { toast } = useToast()
   const [isGenerating, setIsGenerating] = useState(false)
   const [progress, setProgress] = useState(0)
+  const [showASSEditor, setShowASSEditor] = useState(false)
 
   // Advanced settings state
   const [settings, setSettings] = useState<CompositionSettings>({
@@ -122,6 +126,8 @@ export function VideoModule({
   }
 
   const canGenerate = audioUrl && selectedVideos.length > 0
+  const canEditCaptions = !!assUrl && !!projectId
+  const previewVideoUrl = videoUrl || selectedVideos[0] || null
 
   return (
     <Card className="w-full">
@@ -195,6 +201,20 @@ export function VideoModule({
               canCompose={!!canGenerate}
             />
 
+            {canEditCaptions && (
+              <div className="flex items-center justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowASSEditor(true)}
+                  className="rounded-xl border-accent-lavender text-accent-lavender hover:bg-accent-lavender/10"
+                >
+                  Edit Captions
+                </Button>
+              </div>
+            )}
+
             {/* Generate Button */}
             <Button
               onClick={handleGenerate}
@@ -253,6 +273,19 @@ export function VideoModule({
           </>
         )}
       </CardContent>
+
+      {showASSEditor && assUrl && projectId && (
+        <ASSEditorModal
+          isOpen={showASSEditor}
+          onClose={() => setShowASSEditor(false)}
+          projectId={projectId}
+          assUrl={assUrl}
+          videoUrl={previewVideoUrl}
+          onSave={(_newAssUrl) => {
+            setShowASSEditor(false)
+          }}
+        />
+      )}
     </Card>
   )
 }

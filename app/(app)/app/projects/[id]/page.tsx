@@ -225,6 +225,7 @@ export default function ProjectPage({ params }: ProjectWorkspaceProps) {
           videoUrl={videoUrl}
           selectedVideos={selectedVideos}
           selectedMusic={selectedMusic}
+          projectId={projectId}
           onVideoGenerated={handleVideoGenerated}
           onVideoSelect={setSelectedVideos}
           onMusicSelect={setSelectedMusic}

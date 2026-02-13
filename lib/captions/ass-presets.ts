@@ -386,8 +386,7 @@ export function getPreset(presetId: string): PresetInfo {
  * @returns Formatted style line
  */
 export function formatStyleLine(style: ASSStyle): string {
-  return [
-    'Style:',
+  const fields = [
     style.Name,
     style.Fontname,
     style.Fontsize,
@@ -411,7 +410,9 @@ export function formatStyleLine(style: ASSStyle): string {
     style.MarginR,
     style.MarginV,
     style.Encoding,
-  ].join(',')
+  ]
+
+  return 'Style: ' + fields.join(',')
 }
 
 /**

@@ -52,8 +52,18 @@ function loadStateFromStorage(): StudioState | null {
     const stored = localStorage.getItem(STORAGE_KEY)
     if (!stored) return null
 
-    const parsed = JSON.parse(stored)
-    return parsed as StudioState
+    const parsed = JSON.parse(stored) as Partial<StudioState>
+    const baseState = getInitialState()
+    const merged: StudioState = {
+      ...baseState,
+      ...parsed,
+      sessionId: parsed.sessionId || baseState.sessionId || generateSessionId(),
+      captionStyle: parsed.captionStyle || baseState.captionStyle,
+      selectedVideos: Array.isArray(parsed.selectedVideos) ? parsed.selectedVideos : [],
+      selectedMusic: parsed.selectedMusic ?? null,
+    }
+
+    return merged
   } catch (error) {
     console.error('Failed to load studio state from localStorage:', error)
     return null
