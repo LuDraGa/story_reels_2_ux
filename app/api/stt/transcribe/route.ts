@@ -24,6 +24,7 @@ import {
   type TranscriptionResponse,
 } from '@/lib/api/whisperx'
 import { generateSRT } from '@/lib/captions/srt-generator'
+import { generateASS } from '@/lib/captions/ass-generator'
 
 export async function POST(req: NextRequest) {
   console.log('[STT] Transcription request started')
@@ -35,6 +36,8 @@ export async function POST(req: NextRequest) {
     const language = formData.get('language') as string | null
     const projectId = formData.get('projectId') as string | null
     const sessionId = formData.get('sessionId') as string | null
+    const captionStyle = (formData.get('captionStyle') as string) || 'tiktok'
+    const detectFocusWords = formData.get('detectFocusWords') === 'true'
 
     // Validate required fields
     if (!audioFile) {
@@ -117,18 +120,58 @@ export async function POST(req: NextRequest) {
       maxCharsPerLine: 50,
     })
 
+    // Detect focus words using LLM (if requested)
+    let focusWords: number[] = []
+    if (detectFocusWords) {
+      console.log('[STT] Detecting focus words with LLM...')
+      try {
+        const focusResponse = await fetch(`${req.nextUrl.origin}/api/llm/focus-words`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: transcription.text,
+            maxWords: 5,
+          }),
+        })
+
+        if (focusResponse.ok) {
+          const focusData = await focusResponse.json()
+          focusWords = focusData.focusWords || []
+          console.log('[STT] Focus words detected:', focusWords)
+        } else {
+          console.warn('[STT] Focus word detection failed, continuing without focus words')
+        }
+      } catch (focusError) {
+        console.error('[STT] Focus word detection error:', focusError)
+        // Continue without focus words
+      }
+    }
+
+    // Generate ASS captions with karaoke effect
+    console.log('[STT] Generating ASS captions...')
+    const assContent = generateASS(transcription, {
+      preset: captionStyle,
+      focusWords,
+      maxWordsPerLine: 5,
+      title: 'Reel Story Studio Captions',
+      videoWidth: 1080,
+      videoHeight: 1920,
+    })
+
     // Determine storage strategy: authenticated users → Supabase, anonymous → data URLs
     const isAuthenticated = !!userId
     console.log('[STT] User authentication status:', isAuthenticated ? 'authenticated' : 'anonymous')
 
     let transcriptionUrl: string | null = null
     let srtUrl: string | null = null
+    let assUrl: string | null = null
     let storagePath: string | null = null
     let srtPath: string | null = null
+    let assPath: string | null = null
 
     if (!isAuthenticated) {
       // Anonymous user (one-off studio) - return as data URLs (no Supabase upload)
-      console.log('[STT] Anonymous user, returning transcription/SRT as data URLs')
+      console.log('[STT] Anonymous user, returning transcription/SRT/ASS as data URLs')
 
       // Create data URLs
       const transcriptionJson = JSON.stringify(transcription, null, 2)
@@ -138,14 +181,19 @@ export async function POST(req: NextRequest) {
       const srtBase64 = Buffer.from(srtContent).toString('base64')
       srtUrl = `data:text/plain;base64,${srtBase64}`
 
+      const assBase64 = Buffer.from(assContent).toString('base64')
+      assUrl = `data:text/plain;base64,${assBase64}`
+
       storagePath = 'temp://not-stored-json'
       srtPath = 'temp://not-stored-srt'
+      assPath = 'temp://not-stored-ass'
 
-      console.log('[STT] Transcription and SRT converted to data URLs')
+      console.log('[STT] Transcription, SRT, and ASS converted to data URLs')
     } else {
       // Authenticated user - upload to Supabase Storage
       storagePath = generateCaptionStoragePath(userId, projectId, sessionId, 'json')
       srtPath = generateCaptionStoragePath(userId, projectId, sessionId, 'srt')
+      assPath = storagePath.replace('.json', '.ass') // Same path pattern as SRT
 
       console.log('[STT] Storing transcription to:', storagePath)
 
@@ -175,6 +223,20 @@ export async function POST(req: NextRequest) {
         // Don't fail - continue without SRT
       }
 
+      // Upload ASS captions
+      console.log('[STT] Storing ASS to:', assPath)
+      const { error: assUploadError } = await supabase.storage
+        .from('projects')
+        .upload(assPath, assContent, {
+          contentType: 'text/plain',
+          upsert: false,
+        })
+
+      if (assUploadError) {
+        console.error('[STT] ASS upload error:', assUploadError)
+        // Don't fail - continue without ASS
+      }
+
       // Get signed URLs (1 hour expiry)
       if (!uploadError) {
         const { data: signedUrlData } = await supabase.storage
@@ -193,15 +255,27 @@ export async function POST(req: NextRequest) {
         srtUrl = srtSignedUrlData?.signedUrl || null
         console.log('[STT] SRT URL generated:', srtUrl ? 'yes' : 'no')
       }
+
+      if (!assUploadError) {
+        const { data: assSignedUrlData } = await supabase.storage
+          .from('projects')
+          .createSignedUrl(assPath, 3600)
+
+        assUrl = assSignedUrlData?.signedUrl || null
+        console.log('[STT] ASS URL generated:', assUrl ? 'yes' : 'no')
+      }
     }
 
-    // Return transcription response with SRT
+    // Return transcription response with SRT and ASS
     return NextResponse.json({
       transcription,
       storagePath,
       srtPath,
+      assPath,
       transcriptionUrl,
       srtUrl,
+      assUrl,
+      focusWords,
       metadata: {
         duration: transcription.duration,
         language: transcription.language,
@@ -211,6 +285,8 @@ export async function POST(req: NextRequest) {
         ),
         processingTime: parseFloat(elapsedTime),
         captionCount: srtContent.split('\n\n').length,
+        style: captionStyle,
+        hasFocusWords: focusWords.length > 0,
       },
     })
   } catch (error) {

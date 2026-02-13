@@ -17,8 +17,11 @@ interface TTSModuleProps {
   onAudioGenerated: (audioUrl: string, storagePath: string) => void
   // Caption props
   srtUrl: string | null
+  assUrl: string | null
+  captionStyle: 'tiktok' | 'instagram' | 'youtube'
   captionMetadata: StudioState['captionMetadata']
-  onCaptionsGenerated: (srtUrl: string, transcriptionUrl: string, metadata?: StudioState['captionMetadata']) => void
+  onCaptionsGenerated: (srtUrl: string, transcriptionUrl: string, assUrl: string, metadata?: StudioState['captionMetadata']) => void
+  onCaptionStyleChange: (style: 'tiktok' | 'instagram' | 'youtube') => void
 }
 
 /**
@@ -34,13 +37,17 @@ export function TTSModule({
   onSpeakerSelect,
   onAudioGenerated,
   srtUrl,
+  assUrl,
+  captionStyle,
   captionMetadata,
   onCaptionsGenerated,
+  onCaptionStyleChange,
 }: TTSModuleProps) {
   const [speakers, setSpeakers] = useState<Speaker[]>([])
   const [isLoadingSpeakers, setIsLoadingSpeakers] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [isGeneratingCaptions, setIsGeneratingCaptions] = useState(false)
+  const [detectFocusWords, setDetectFocusWords] = useState(false)
   const { toast } = useToast()
 
   // Fetch speakers on mount (with 15-day localStorage cache)
@@ -175,6 +182,8 @@ export function TTSModule({
       formData.append('file', audioBlob, 'audio.wav')
       formData.append('language', 'en')
       formData.append('sessionId', sessionId)
+      formData.append('captionStyle', captionStyle)
+      formData.append('detectFocusWords', detectFocusWords.toString())
 
       // Call STT API
       const response = await fetch('/api/stt/transcribe', {
@@ -193,12 +202,13 @@ export function TTSModule({
       onCaptionsGenerated(
         data.srtUrl,
         data.transcriptionUrl,
+        data.assUrl,
         data.metadata
       )
 
       toast({
         title: 'Captions generated',
-        description: `${data.metadata?.captionCount || 0} captions created`,
+        description: `${data.metadata?.captionCount || 0} captions created with ${captionStyle} style`,
       })
     } catch (error) {
       console.error('Failed to generate captions:', error)
@@ -326,6 +336,40 @@ export function TTSModule({
                   </audio>
                 </div>
 
+                {/* Caption Style Selection */}
+                {!srtUrl && (
+                  <div className="space-y-3 rounded-xl border border-accent-lavender/20 bg-accent-lavender/5 p-4">
+                    <label className="text-sm font-medium text-secondary-700">
+                      Caption Style
+                    </label>
+                    <select
+                      value={captionStyle}
+                      onChange={(e) => onCaptionStyleChange(e.target.value as 'tiktok' | 'instagram' | 'youtube')}
+                      className="w-full rounded-xl border border-secondary-300 bg-primary-100 p-3 text-secondary-700 focus:border-accent-lavender focus:outline-none focus:ring-2 focus:ring-accent-lavender/20"
+                    >
+                      <option value="tiktok">🎬 TikTok (bold yellow highlight)</option>
+                      <option value="instagram">📸 Instagram (clean white)</option>
+                      <option value="youtube">▶️ YouTube (standard)</option>
+                    </select>
+
+                    <div className="flex items-start gap-2">
+                      <input
+                        type="checkbox"
+                        id="detectFocusWords"
+                        checked={detectFocusWords}
+                        onChange={(e) => setDetectFocusWords(e.target.checked)}
+                        className="mt-0.5 h-4 w-4 rounded border-secondary-300 text-accent-lavender focus:ring-accent-lavender/20"
+                      />
+                      <label htmlFor="detectFocusWords" className="text-sm text-secondary-600">
+                        <span className="font-medium">✨ Emphasize key words (AI-detected)</span>
+                        <p className="mt-0.5 text-xs text-secondary-500">
+                          Uses OpenAI GPT to detect important words for emphasis
+                        </p>
+                      </label>
+                    </div>
+                  </div>
+                )}
+
                 {/* Generate Captions Button */}
                 {!srtUrl && (
                   <Button
@@ -340,7 +384,7 @@ export function TTSModule({
                         Generating captions...
                       </>
                     ) : (
-                      '+ Generate Captions (SRT)'
+                      '+ Generate Captions'
                     )}
                   </Button>
                 )}
@@ -360,6 +404,7 @@ export function TTSModule({
                   <div className="space-y-2">
                     <CaptionPreview
                       srtUrl={srtUrl}
+                      assUrl={assUrl}
                       metadata={captionMetadata}
                     />
                   </div>

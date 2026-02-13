@@ -18,12 +18,19 @@ export interface StudioState {
   videoUrl: string | null // Video URL (stub for now)
   // Caption state (from WhisperX STT)
   srtUrl: string | null // SRT caption file URL
+  assUrl: string | null // ASS caption file URL (TikTok-style karaoke)
   transcriptionUrl: string | null // Transcription JSON URL
+  captionStyle: 'tiktok' | 'instagram' | 'youtube' // Selected caption style preset
   captionMetadata: {
     wordCount?: number
     duration?: number
     captionCount?: number
+    style?: string
+    hasFocusWords?: boolean
   } | null
+  // Asset selection (for Video module)
+  selectedVideos: string[] // Selected background video URLs
+  selectedMusic: string | null // Selected music track URL
 }
 
 const STORAGE_KEY = 'reel-studio-state'
@@ -83,8 +90,12 @@ function getInitialState(): StudioState {
     selectedSpeakerId: null,
     videoUrl: null,
     srtUrl: null,
+    assUrl: null,
     transcriptionUrl: null,
+    captionStyle: 'tiktok', // Default to TikTok style
     captionMetadata: null,
+    selectedVideos: [],
+    selectedMusic: null,
   }
 }
 
@@ -168,16 +179,46 @@ export function useStudioState() {
 
   // Update captions (from STT transcription)
   const updateCaptions = useCallback(
-    (srtUrl: string, transcriptionUrl: string, metadata?: StudioState['captionMetadata']) => {
+    (
+      srtUrl: string,
+      transcriptionUrl: string,
+      assUrl: string,
+      metadata?: StudioState['captionMetadata']
+    ) => {
       setState(prev => ({
         ...prev,
         srtUrl,
+        assUrl,
         transcriptionUrl,
         captionMetadata: metadata || null,
       }))
     },
     []
   )
+
+  // Update caption style preset
+  const updateCaptionStyle = useCallback((style: 'tiktok' | 'instagram' | 'youtube') => {
+    setState(prev => ({
+      ...prev,
+      captionStyle: style,
+    }))
+  }, [])
+
+  // Update selected background videos
+  const updateSelectedVideos = useCallback((videos: string[]) => {
+    setState(prev => ({
+      ...prev,
+      selectedVideos: videos,
+    }))
+  }, [])
+
+  // Update selected music
+  const updateSelectedMusic = useCallback((music: string | null) => {
+    setState(prev => ({
+      ...prev,
+      selectedMusic: music,
+    }))
+  }, [])
 
   // Clear audio (for re-generation)
   const clearAudio = useCallback(() => {
@@ -187,6 +228,7 @@ export function useStudioState() {
       storagePath: null,
       // Also clear captions when audio is cleared
       srtUrl: null,
+      assUrl: null,
       transcriptionUrl: null,
       captionMetadata: null,
     }))
@@ -205,6 +247,7 @@ export function useStudioState() {
     setState(prev => ({
       ...prev,
       srtUrl: null,
+      assUrl: null,
       transcriptionUrl: null,
       captionMetadata: null,
     }))
@@ -212,7 +255,7 @@ export function useStudioState() {
 
   // Reset all state (clear localStorage)
   const resetState = useCallback(() => {
-    const newState = {
+    const newState: StudioState = {
       sessionId: generateSessionId(),
       sourceText: '',
       script: '',
@@ -221,8 +264,12 @@ export function useStudioState() {
       selectedSpeakerId: null,
       videoUrl: null,
       srtUrl: null,
+      assUrl: null,
       transcriptionUrl: null,
+      captionStyle: 'tiktok',
       captionMetadata: null,
+      selectedVideos: [],
+      selectedMusic: null,
     }
     setState(newState)
     saveStateToStorage(newState)
@@ -238,6 +285,9 @@ export function useStudioState() {
     updateAudio,
     updateVideo,
     updateCaptions,
+    updateCaptionStyle,
+    updateSelectedVideos,
+    updateSelectedMusic,
     clearAudio,
     clearVideo,
     clearCaptions,

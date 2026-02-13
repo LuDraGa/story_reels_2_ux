@@ -27,6 +27,14 @@ export default function ProjectPage({ params }: ProjectWorkspaceProps) {
   const [storagePath, setStoragePath] = useState<string | null>(null)
   const [selectedSpeakerId, setSelectedSpeakerId] = useState<string | null>(null)
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
+  // Caption state
+  const [srtUrl, setSrtUrl] = useState<string | null>(null)
+  const [assUrl, setAssUrl] = useState<string | null>(null)
+  const [captionStyle, setCaptionStyle] = useState<'tiktok' | 'instagram' | 'youtube'>('tiktok')
+  const [captionMetadata, setCaptionMetadata] = useState<any>(null)
+  // Asset selection state
+  const [selectedVideos, setSelectedVideos] = useState<string[]>([])
+  const [selectedMusic, setSelectedMusic] = useState<string | null>(null)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -102,6 +110,22 @@ export default function ProjectPage({ params }: ProjectWorkspaceProps) {
   const handleVideoGenerated = (url: string) => {
     setVideoUrl(url)
     // TODO: Save video asset to database
+  }
+
+  const handleCaptionsGenerated = (
+    srt: string,
+    transcription: string,
+    ass: string,
+    metadata?: any
+  ) => {
+    setSrtUrl(srt)
+    setAssUrl(ass)
+    setCaptionMetadata(metadata)
+    // TODO: Save caption assets to database
+  }
+
+  const handleCaptionStyleChange = (style: 'tiktok' | 'instagram' | 'youtube') => {
+    setCaptionStyle(style)
   }
 
   const handleSourceTextSave = (text: string) => {
@@ -186,13 +210,24 @@ export default function ProjectPage({ params }: ProjectWorkspaceProps) {
           selectedSpeakerId={selectedSpeakerId}
           onSpeakerSelect={setSelectedSpeakerId}
           onAudioGenerated={handleAudioGenerated}
+          srtUrl={srtUrl}
+          assUrl={assUrl}
+          captionStyle={captionStyle}
+          captionMetadata={captionMetadata}
+          onCaptionsGenerated={handleCaptionsGenerated}
+          onCaptionStyleChange={handleCaptionStyleChange}
         />
 
-        {/* Module 4: Video (Stub) */}
+        {/* Module 4: Video */}
         <VideoModule
           audioUrl={audioUrl}
+          assUrl={assUrl}
           videoUrl={videoUrl}
+          selectedVideos={selectedVideos}
+          selectedMusic={selectedMusic}
           onVideoGenerated={handleVideoGenerated}
+          onVideoSelect={setSelectedVideos}
+          onMusicSelect={setSelectedMusic}
         />
 
         {/* Module 5: Export */}

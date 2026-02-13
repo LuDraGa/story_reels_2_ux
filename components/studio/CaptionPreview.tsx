@@ -7,10 +7,13 @@ import { Download, FileText, Loader2 } from 'lucide-react'
 
 interface CaptionPreviewProps {
   srtUrl: string
+  assUrl?: string | null
   metadata?: {
     wordCount?: number
     duration?: number
     captionCount?: number
+    style?: string
+    hasFocusWords?: boolean
   } | null
 }
 
@@ -20,7 +23,7 @@ interface ParsedCaption {
   text: string
 }
 
-export function CaptionPreview({ srtUrl, metadata }: CaptionPreviewProps) {
+export function CaptionPreview({ srtUrl, assUrl, metadata }: CaptionPreviewProps) {
   const [captions, setCaptions] = useState<ParsedCaption[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -53,11 +56,24 @@ export function CaptionPreview({ srtUrl, metadata }: CaptionPreviewProps) {
     }
   }
 
-  const handleDownload = () => {
+  const handleDownloadSRT = () => {
     // Open SRT URL in new tab (browser will download)
     const link = document.createElement('a')
     link.href = srtUrl
     link.download = 'captions.srt'
+    link.target = '_blank'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
+  const handleDownloadASS = () => {
+    if (!assUrl) return
+
+    // Open ASS URL in new tab (browser will download)
+    const link = document.createElement('a')
+    link.href = assUrl
+    link.download = 'captions.ass'
     link.target = '_blank'
     document.body.appendChild(link)
     link.click()
@@ -95,16 +111,40 @@ export function CaptionPreview({ srtUrl, metadata }: CaptionPreviewProps) {
             <h4 className="font-display text-sm font-semibold text-secondary-700">
               Captions Generated
             </h4>
+            {metadata?.style && (
+              <span className="px-2 py-0.5 text-xs font-medium rounded-md bg-accent-sage/20 text-accent-sage border border-accent-sage/30">
+                {metadata.style === 'tiktok' && '🎬 TikTok'}
+                {metadata.style === 'instagram' && '📸 Instagram'}
+                {metadata.style === 'youtube' && '▶️ YouTube'}
+              </span>
+            )}
+            {metadata?.hasFocusWords && (
+              <span className="px-2 py-0.5 text-xs font-medium rounded-md bg-accent-lavender/20 text-accent-lavender border border-accent-lavender/30">
+                ✨ Focus
+              </span>
+            )}
           </div>
-          <Button
-            onClick={handleDownload}
-            size="sm"
-            variant="outline"
-            className="rounded-xl border-accent-sage text-accent-sage hover:bg-accent-sage/10"
-          >
-            <Download className="w-3 h-3 mr-1" />
-            Download SRT
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              onClick={handleDownloadSRT}
+              size="sm"
+              variant="outline"
+              className="rounded-xl border-secondary-300 text-secondary-600 hover:bg-secondary-100"
+            >
+              <Download className="w-3 h-3 mr-1" />
+              SRT
+            </Button>
+            {assUrl && (
+              <Button
+                onClick={handleDownloadASS}
+                size="sm"
+                className="rounded-xl bg-gradient-to-r from-pink-500 to-yellow-500 text-white hover:from-pink-600 hover:to-yellow-600"
+              >
+                <Download className="w-3 h-3 mr-1" />
+                ASS
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Metadata */}

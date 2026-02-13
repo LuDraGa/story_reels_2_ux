@@ -82,62 +82,49 @@ export async function POST(request: Request) {
     const audioBuffer = await response.arrayBuffer()
     console.log('[TTS] Audio buffer size:', audioBuffer.byteLength)
 
-    // 4. Determine storage strategy: authenticated users → Supabase, anonymous → data URL
+    // 4. Upload to Supabase Storage (both authenticated and anonymous users)
+    // Anonymous users use oneoff/ folder, authenticated users use their userId
     const isAuthenticated = !!userId
     console.log('[TTS] User authentication status:', isAuthenticated ? 'authenticated' : 'anonymous')
 
-    let audioUrl: string
-    let storagePath: string
+    const supabase = await createSupabaseServerClient()
+    const storagePath = generateAudioStoragePath(userId, projectId, sessionId)
 
-    if (!isAuthenticated) {
-      // Anonymous user (one-off studio) - return audio as base64 data URL
-      console.log('[TTS] Anonymous user, returning audio as data URL (no Supabase upload)')
+    console.log('[TTS] Uploading to Supabase Storage:', {
+      bucket: 'projects',
+      path: storagePath,
+      size: audioBuffer.byteLength,
+      userType: isAuthenticated ? 'authenticated' : 'anonymous (one-off)'
+    })
 
-      const base64Audio = Buffer.from(audioBuffer).toString('base64')
-      audioUrl = `data:audio/wav;base64,${base64Audio}`
-      storagePath = 'temp://not-stored' // Placeholder
-
-      console.log('[TTS] Audio converted to data URL (size:', base64Audio.length, 'chars)')
-    } else {
-      // Authenticated user - upload to Supabase Storage
-      const supabase = await createSupabaseServerClient()
-      storagePath = generateAudioStoragePath(userId, projectId, sessionId)
-
-      console.log('[TTS] Uploading to Supabase Storage:', {
-        bucket: 'projects',
-        path: storagePath,
-        size: audioBuffer.byteLength
+    const { error: uploadError } = await supabase.storage
+      .from('projects')
+      .upload(storagePath, audioBuffer, {
+        contentType: 'audio/wav',
+        upsert: false, // Don't overwrite existing files
       })
 
-      const { error: uploadError } = await supabase.storage
-        .from('projects')
-        .upload(storagePath, audioBuffer, {
-          contentType: 'audio/wav',
-          upsert: false, // Don't overwrite existing files
-        })
-
-      if (uploadError) {
-        console.error('[TTS] Supabase storage upload error:', uploadError)
-        throw new Error(`Failed to upload audio to storage: ${uploadError.message}`)
-      }
-
-      console.log('[TTS] Upload successful, generating signed URL...')
-
-      // Generate signed URL (valid for 1 year = 31536000 seconds)
-      // Signed URLs work for both public and private buckets
-      const { data: urlData, error: urlError } = await supabase.storage
-        .from('projects')
-        .createSignedUrl(storagePath, 31536000) // 1 year
-
-      console.log('[TTS] Signed URL generated:', urlData?.signedUrl)
-
-      if (urlError || !urlData?.signedUrl) {
-        console.error('[TTS] Failed to generate signed URL:', urlError)
-        throw new Error('Failed to get signed URL for uploaded audio')
-      }
-
-      audioUrl = urlData.signedUrl
+    if (uploadError) {
+      console.error('[TTS] Supabase storage upload error:', uploadError)
+      throw new Error(`Failed to upload audio to storage: ${uploadError.message}`)
     }
+
+    console.log('[TTS] Upload successful, generating signed URL...')
+
+    // Generate signed URL (valid for 1 hour for anonymous, 1 year for authenticated)
+    const expirySeconds = isAuthenticated ? 31536000 : 3600 // 1 year vs 1 hour
+    const { data: urlData, error: urlError } = await supabase.storage
+      .from('projects')
+      .createSignedUrl(storagePath, expirySeconds)
+
+    console.log('[TTS] Signed URL generated:', urlData?.signedUrl)
+
+    if (urlError || !urlData?.signedUrl) {
+      console.error('[TTS] Failed to generate signed URL:', urlError)
+      throw new Error('Failed to get signed URL for uploaded audio')
+    }
+
+    const audioUrl = urlData.signedUrl
 
     // TODO: Detect audio duration using FFprobe
     // Example: ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 audio.wav

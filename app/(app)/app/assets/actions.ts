@@ -50,8 +50,22 @@ export async function createAsset(formData: FormData) {
   }
 
   try {
+    // Determine file type from MIME type
+    const isVideo = file.type.startsWith('video/')
+    const isAudio = file.type.startsWith('audio/')
+    const fileType = isVideo ? 'video' : isAudio ? 'audio' : 'video' // Default to video for legacy compatibility
+    const fileSizeMB = file.size / 1024 / 1024
+
     // Upload file to Supabase Storage
-    const fileName = `${Date.now()}_${file.name}`
+    // Sanitize filename: remove special characters, spaces, keep only alphanumeric, hyphens, underscores
+    const timestamp = Date.now()
+    const fileExtension = file.name.split('.').pop()?.toLowerCase() || 'mp4'
+    const sanitizedName = file.name
+      .replace(/\.[^/.]+$/, '') // Remove extension
+      .replace(/[^a-zA-Z0-9-_]/g, '_') // Replace invalid chars with underscore
+      .substring(0, 50) // Limit length
+
+    const fileName = `${timestamp}_${sanitizedName}.${fileExtension}`
     const storagePath = `backgrounds/${user.id}/${fileName}`
 
     const { error: uploadError } = await supabase.storage
@@ -83,8 +97,11 @@ export async function createAsset(formData: FormData) {
       // @ts-ignore
       .insert({
         user_id: user.id,
-        title: title.trim(),
+        name: title.trim(), // Column is 'name' not 'title'
+        file_name: file.name, // Original filename
+        file_type: fileType, // 'video' or 'audio'
         storage_path: storagePath,
+        file_size_mb: fileSizeMB,
         tags: tagsArray,
       })
       .select()

@@ -19,6 +19,9 @@ export default function Home() {
     updateAudio,
     updateVideo,
     updateCaptions,
+    updateCaptionStyle,
+    updateSelectedVideos,
+    updateSelectedMusic,
   } = useStudioState()
 
   return (
@@ -59,15 +62,23 @@ export default function Home() {
             onSpeakerSelect={updateSelectedSpeaker}
             onAudioGenerated={updateAudio}
             srtUrl={state.srtUrl}
+            assUrl={state.assUrl}
+            captionStyle={state.captionStyle}
             captionMetadata={state.captionMetadata}
             onCaptionsGenerated={updateCaptions}
+            onCaptionStyleChange={updateCaptionStyle}
           />
 
-          {/* Module 4: Video (Stub) */}
+          {/* Module 4: Video */}
           <VideoModule
             audioUrl={state.audioUrl}
+            assUrl={state.assUrl}
             videoUrl={state.videoUrl}
+            selectedVideos={state.selectedVideos}
+            selectedMusic={state.selectedMusic}
             onVideoGenerated={updateVideo}
+            onVideoSelect={updateSelectedVideos}
+            onMusicSelect={updateSelectedMusic}
           />
 
           {/* Module 5: Export */}
