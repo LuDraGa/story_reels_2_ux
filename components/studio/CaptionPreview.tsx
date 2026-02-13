@@ -45,8 +45,8 @@ export function CaptionPreview({ srtUrl, assUrl, metadata }: CaptionPreviewProps
 
       const srtContent = await response.text()
 
-      // Parse SRT (simple parser - get first 5 captions)
-      const parsed = parseSRT(srtContent).slice(0, 5)
+      // Parse SRT (simple parser - show all captions)
+      const parsed = parseSRT(srtContent)
       setCaptions(parsed)
     } catch (err) {
       console.error('Failed to load captions:', err)
@@ -166,7 +166,7 @@ export function CaptionPreview({ srtUrl, assUrl, metadata }: CaptionPreviewProps
       {/* Caption Preview */}
       <div className="p-4 space-y-3">
         <p className="text-xs text-secondary-500 mb-2">
-          Preview (first 5 captions):
+          Preview:
         </p>
 
         {captions.length === 0 ? (
@@ -174,7 +174,7 @@ export function CaptionPreview({ srtUrl, assUrl, metadata }: CaptionPreviewProps
             No captions available
           </p>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
             {captions.map((caption, idx) => (
               <div
                 key={idx}
@@ -193,12 +193,6 @@ export function CaptionPreview({ srtUrl, assUrl, metadata }: CaptionPreviewProps
                 </p>
               </div>
             ))}
-
-            {captions.length < (metadata?.captionCount || 0) && (
-              <p className="text-xs text-secondary-400 text-center italic">
-                ... and {(metadata?.captionCount || 0) - captions.length} more
-              </p>
-            )}
           </div>
         )}
       </div>

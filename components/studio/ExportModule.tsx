@@ -55,14 +55,42 @@ export function ExportModule({ audioUrl, videoUrl }: ExportModuleProps) {
     }
   }
 
-  const handleDownloadVideo = () => {
+  const handleDownloadVideo = async () => {
     if (!videoUrl) return
 
-    // STUB: In Phase 7, this will download real video
-    toast({
-      title: 'Video download (stub)',
-      description: 'Real video download coming in Phase 7',
-    })
+    try {
+      // Fetch the video file as a blob (works for cross-origin URLs)
+      const response = await fetch(videoUrl)
+      if (!response.ok) throw new Error('Failed to fetch video')
+
+      const blob = await response.blob()
+
+      // Create blob URL (same-origin, so download attribute works)
+      const blobUrl = URL.createObjectURL(blob)
+
+      // Create temporary link and trigger download
+      const link = document.createElement('a')
+      link.href = blobUrl
+      link.download = `reel-${Date.now()}.mp4`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+
+      // Clean up blob URL
+      URL.revokeObjectURL(blobUrl)
+
+      toast({
+        title: 'Download started',
+        description: 'Your video file is downloading',
+      })
+    } catch (error) {
+      console.error('Download failed:', error)
+      toast({
+        title: 'Download failed',
+        description: 'Please try again',
+        variant: 'destructive',
+      })
+    }
   }
 
   const hasAudio = !!audioUrl
@@ -117,10 +145,10 @@ export function ExportModule({ audioUrl, videoUrl }: ExportModuleProps) {
               <div className="flex items-center justify-between rounded-xl border border-secondary-300 bg-primary-100 p-4">
                 <div>
                   <p className="font-medium text-secondary-700">Video File</p>
-                  <p className="text-sm text-secondary-500">MP4 format (stub)</p>
+                  <p className="text-sm text-secondary-500">MP4 format</p>
                 </div>
                 <Button onClick={handleDownloadVideo} variant="outline" size="sm">
-                  Download (Stub)
+                  Download
                 </Button>
               </div>
             )}

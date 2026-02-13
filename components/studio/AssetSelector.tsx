@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Upload, ChevronDown, ChevronUp, X, Music } from 'lucide-react'
 import { AssetGrid } from './AssetGrid'
+import { AssetUploader } from './AssetUploader'
 
 interface Asset {
   id: string
@@ -196,27 +197,14 @@ export function AssetSelector({
 
       {/* Inline Uploader */}
       {showUploader && (
-        <div className="rounded-xl border border-primary-500/20 bg-primary-200 p-4">
-          <p className="text-sm text-secondary-600 mb-3">
-            Upload {type === 'video' ? 'a background video' : 'background music'}
-          </p>
-          {/* TODO: Implement inline AssetUploader component */}
-          <div className="text-center py-8 border-2 border-dashed border-primary-500/20 rounded-xl">
-            <Upload className="w-8 h-8 mx-auto text-secondary-400 mb-2" />
-            <p className="text-sm text-secondary-500">Upload component coming soon</p>
-            <Button
-              variant="link"
-              size="sm"
-              onClick={() => {
-                setShowUploader(false)
-                setIsExpanded(true)
-              }}
-              className="mt-2"
-            >
-              Or choose from library instead
-            </Button>
-          </div>
-        </div>
+        <AssetUploader
+          type={type}
+          onUploadComplete={() => {
+            loadAssets() // Refresh asset list
+            setShowUploader(false) // Close uploader
+            setIsExpanded(true) // Show library with new asset
+          }}
+        />
       )}
     </div>
   )

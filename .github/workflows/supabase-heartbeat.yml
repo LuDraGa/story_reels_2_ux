@@ -1,10 +1,10 @@
 name: Supabase Heartbeat
 
-# Runs every 5 days to prevent Supabase Free tier from pausing (7-day threshold)
+# Runs every 12 hours to prevent Supabase Free tier from pausing (7-day threshold)
 on:
   schedule:
-    - cron: '0 12 */5 * *'  # Every 5 days at 12:00 UTC
-  workflow_dispatch:  # Allow manual trigger for testing
+    - cron: '0 */12 * * *' # Every 12 hours
+  workflow_dispatch: # Allow manual trigger for testing
 
 jobs:
   heartbeat:
