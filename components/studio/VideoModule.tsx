@@ -13,11 +13,13 @@ import { ASSEditorModal } from './ASSEditorModal'
 interface VideoModuleProps {
   audioUrl: string | null
   assUrl: string | null
+  assPath?: string | null
   videoUrl: string | null
   selectedVideos: string[]
   selectedMusic: string | null
   audioDuration?: number
   projectId?: string
+  onAssUrlChange?: (assUrl: string) => void
   onVideoGenerated: (videoUrl: string) => void
   onVideoSelect: (videos: string[]) => void
   onMusicSelect: (music: string | null) => void
@@ -35,11 +37,13 @@ interface VideoModuleProps {
 export function VideoModule({
   audioUrl,
   assUrl,
+  assPath,
   videoUrl,
   selectedVideos,
   selectedMusic,
   audioDuration,
   projectId,
+  onAssUrlChange,
   onVideoGenerated,
   onVideoSelect,
   onMusicSelect,
@@ -85,13 +89,17 @@ export function VideoModule({
         setProgress((prev) => Math.min(prev + 10, 90))
       }, 500)
 
+      const subtitlesPath =
+        assPath && assPath.startsWith('projects/') ? assPath : null
       const response = await fetch('/api/video/compose', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          project_id: projectId || null,
           audio_url: audioUrl,
           background_videos: validVideos,
           subtitles_url: assUrl || null,
+          subtitles_path: subtitlesPath,
           music_url: selectedMusic,
           music_volume: settings.musicVolume, // Only supported setting for now
         }),
@@ -280,9 +288,12 @@ export function VideoModule({
           onClose={() => setShowASSEditor(false)}
           projectId={projectId}
           assUrl={assUrl}
+          assPath={assPath || null}
           videoUrl={previewVideoUrl}
-          onSave={(_newAssUrl) => {
-            setShowASSEditor(false)
+          onSave={(newAssUrl) => {
+            if (newAssUrl && onAssUrlChange) {
+              onAssUrlChange(newAssUrl)
+            }
           }}
         />
       )}

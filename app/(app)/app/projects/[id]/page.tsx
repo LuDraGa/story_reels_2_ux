@@ -30,6 +30,7 @@ export default function ProjectPage({ params }: ProjectWorkspaceProps) {
   // Caption state
   const [srtUrl, setSrtUrl] = useState<string | null>(null)
   const [assUrl, setAssUrl] = useState<string | null>(null)
+  const [assPath, setAssPath] = useState<string | null>(null)
   const [captionStyle, setCaptionStyle] = useState<'tiktok' | 'instagram' | 'youtube'>('tiktok')
   const [captionMetadata, setCaptionMetadata] = useState<any>(null)
   // Asset selection state
@@ -68,16 +69,21 @@ export default function ProjectPage({ params }: ProjectWorkspaceProps) {
         // Get audio URL from Supabase Storage
         // @ts-ignore
         const audioPath = result.audio.storage_path
+        const audioSignedUrl = result.audio.signedUrl
         // TODO: Generate public URL from storage path
         // For now, we'll use the storage path as-is
         setStoragePath(audioPath)
+        if (audioSignedUrl) {
+          setAudioUrl(audioSignedUrl)
+        }
       }
       // @ts-ignore
       if (result.video) {
         // @ts-ignore
         const videoPath = result.video.storage_path
+        const videoSignedUrl = result.video.signedUrl
         // TODO: Generate public URL
-        setVideoUrl(videoPath)
+        setVideoUrl(videoSignedUrl || videoPath)
       }
     } catch (error) {
       console.error('Failed to load project:', error)
@@ -116,10 +122,12 @@ export default function ProjectPage({ params }: ProjectWorkspaceProps) {
     srt: string,
     transcription: string,
     ass: string,
-    metadata?: any
+    metadata?: any,
+    newAssPath?: string | null
   ) => {
     setSrtUrl(srt)
     setAssUrl(ass)
+    setAssPath(newAssPath || null)
     setCaptionMetadata(metadata)
     // TODO: Save caption assets to database
   }
@@ -206,6 +214,7 @@ export default function ProjectPage({ params }: ProjectWorkspaceProps) {
         <TTSModule
           script={script}
           sessionId={projectId} // Use projectId as sessionId for storage paths
+          projectId={projectId}
           audioUrl={audioUrl}
           selectedSpeakerId={selectedSpeakerId}
           onSpeakerSelect={setSelectedSpeakerId}
@@ -222,10 +231,12 @@ export default function ProjectPage({ params }: ProjectWorkspaceProps) {
         <VideoModule
           audioUrl={audioUrl}
           assUrl={assUrl}
+          assPath={assPath}
           videoUrl={videoUrl}
           selectedVideos={selectedVideos}
           selectedMusic={selectedMusic}
           projectId={projectId}
+          onAssUrlChange={setAssUrl}
           onVideoGenerated={handleVideoGenerated}
           onVideoSelect={setSelectedVideos}
           onMusicSelect={setSelectedMusic}

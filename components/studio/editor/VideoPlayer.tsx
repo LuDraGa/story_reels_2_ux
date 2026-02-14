@@ -18,6 +18,8 @@ interface VideoPlayerProps {
   captions?: ParsedCaption[]
   styles?: ASSStyle[]
   scriptInfo?: Record<string, string>
+  enablePositionDrag?: boolean
+  onPositionChange?: (position: { x: number; y: number }) => void
 }
 
 function formatTimestamp(seconds: number): string {
@@ -45,11 +47,14 @@ export function VideoPlayer({
   captions,
   styles,
   scriptInfo,
+  enablePositionDrag,
+  onPositionChange,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const canvasSizeRef = useRef({ width: 0, height: 0 })
+  const isDraggingRef = useRef(false)
 
   const activeCaption = useMemo(() => {
     if (!captions || captions.length === 0) return null
@@ -424,6 +429,54 @@ export function VideoPlayer({
     ctx.shadowColor = 'transparent'
   }, [activeCaption, activeStyle, scriptInfo, currentTime, parsedText])
 
+  useEffect(() => {
+    if (!enablePositionDrag || !onPositionChange) return
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!activeCaption || !activeStyle) return
+      isDraggingRef.current = true
+      canvas.setPointerCapture(event.pointerId)
+      event.preventDefault()
+    }
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (!isDraggingRef.current) return
+      if (!canvas) return
+      const rect = canvas.getBoundingClientRect()
+      const scriptWidth = Number(scriptInfo?.PlayResX) || rect.width
+      const scriptHeight = Number(scriptInfo?.PlayResY) || rect.height
+      const x = ((event.clientX - rect.left) / rect.width) * scriptWidth
+      const y = ((event.clientY - rect.top) / rect.height) * scriptHeight
+      onPositionChange({
+        x: Math.max(0, Math.min(x, scriptWidth)),
+        y: Math.max(0, Math.min(y, scriptHeight)),
+      })
+    }
+
+    const handlePointerUp = (event: PointerEvent) => {
+      isDraggingRef.current = false
+      try {
+        canvas.releasePointerCapture(event.pointerId)
+      } catch {
+        // ignore release errors
+      }
+    }
+
+    canvas.addEventListener('pointerdown', handlePointerDown)
+    canvas.addEventListener('pointermove', handlePointerMove)
+    canvas.addEventListener('pointerup', handlePointerUp)
+    canvas.addEventListener('pointerleave', handlePointerUp)
+
+    return () => {
+      canvas.removeEventListener('pointerdown', handlePointerDown)
+      canvas.removeEventListener('pointermove', handlePointerMove)
+      canvas.removeEventListener('pointerup', handlePointerUp)
+      canvas.removeEventListener('pointerleave', handlePointerUp)
+    }
+  }, [activeCaption, activeStyle, enablePositionDrag, onPositionChange, scriptInfo])
+
   if (!videoUrl) {
     return (
       <div className="flex h-full items-center justify-center rounded-2xl border border-secondary-800 bg-secondary-900/40 text-sm text-secondary-400">
@@ -449,7 +502,11 @@ export function VideoPlayer({
         />
         <canvas
           ref={canvasRef}
-          className="pointer-events-none absolute inset-0"
+          className={
+            enablePositionDrag
+              ? 'absolute inset-0 cursor-crosshair'
+              : 'pointer-events-none absolute inset-0'
+          }
         />
       </div>
       <div className="flex items-center justify-between rounded-xl border border-secondary-800 bg-secondary-900/40 px-3 py-2 text-xs text-secondary-300">

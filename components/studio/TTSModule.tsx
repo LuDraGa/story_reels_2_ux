@@ -11,6 +11,7 @@ import type { StudioState } from '@/hooks/useStudioState'
 interface TTSModuleProps {
   script: string
   sessionId: string
+  projectId?: string
   audioUrl: string | null
   selectedSpeakerId: string | null
   onSpeakerSelect: (speakerId: string) => void
@@ -20,7 +21,13 @@ interface TTSModuleProps {
   assUrl: string | null
   captionStyle: 'tiktok' | 'instagram' | 'youtube'
   captionMetadata: StudioState['captionMetadata']
-  onCaptionsGenerated: (srtUrl: string, transcriptionUrl: string, assUrl: string, metadata?: StudioState['captionMetadata']) => void
+  onCaptionsGenerated: (
+    srtUrl: string,
+    transcriptionUrl: string,
+    assUrl: string,
+    metadata?: StudioState['captionMetadata'],
+    assPath?: string | null
+  ) => void
   onCaptionStyleChange: (style: 'tiktok' | 'instagram' | 'youtube') => void
 }
 
@@ -32,6 +39,7 @@ interface TTSModuleProps {
 export function TTSModule({
   script,
   sessionId,
+  projectId,
   audioUrl,
   selectedSpeakerId,
   onSpeakerSelect,
@@ -182,6 +190,9 @@ export function TTSModule({
       formData.append('file', audioBlob, 'audio.wav')
       formData.append('language', 'en')
       formData.append('sessionId', sessionId)
+      if (projectId) {
+        formData.append('projectId', projectId)
+      }
       formData.append('captionStyle', captionStyle)
       formData.append('detectFocusWords', detectFocusWords.toString())
 
@@ -203,7 +214,8 @@ export function TTSModule({
         data.srtUrl,
         data.transcriptionUrl,
         data.assUrl,
-        data.metadata
+        data.metadata,
+        data.assPath
       )
 
       toast({

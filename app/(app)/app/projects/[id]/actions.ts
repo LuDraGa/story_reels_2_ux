@@ -59,11 +59,29 @@ export async function getProjectDetails(projectId: string) {
     .order('created_at', { ascending: false })
     .limit(1)
 
+  let audioSignedUrl: string | null = null
+  const audioPath = audioAssets?.[0]?.storage_path
+  if (audioPath) {
+    const { data: signedAudio } = await supabase.storage
+      .from('projects')
+      .createSignedUrl(audioPath, 3600)
+    audioSignedUrl = signedAudio?.signedUrl || null
+  }
+
+  let videoSignedUrl: string | null = null
+  const videoPath = videoAssets?.[0]?.storage_path
+  if (videoPath) {
+    const { data: signedVideo } = await supabase.storage
+      .from('projects')
+      .createSignedUrl(videoPath, 3600)
+    videoSignedUrl = signedVideo?.signedUrl || null
+  }
+
   return {
     project,
     script: scriptVersions?.[0] || null,
-    audio: audioAssets?.[0] || null,
-    video: videoAssets?.[0] || null,
+    audio: audioAssets?.[0] ? { ...audioAssets[0], signedUrl: audioSignedUrl } : null,
+    video: videoAssets?.[0] ? { ...videoAssets[0], signedUrl: videoSignedUrl } : null,
   }
 }
 

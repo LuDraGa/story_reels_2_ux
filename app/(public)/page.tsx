@@ -73,6 +73,7 @@ export default function Home() {
           <VideoModule
             audioUrl={state.audioUrl}
             assUrl={state.assUrl}
+            assPath={state.assPath}
             videoUrl={state.videoUrl}
             selectedVideos={state.selectedVideos}
             selectedMusic={state.selectedMusic}

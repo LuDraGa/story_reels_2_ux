@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react'
 import type { ParsedCaption } from '@/lib/captions/ass-parser'
 import { cn } from '@/lib/utils'
+import { assTextToPlain } from '@/lib/captions/ass-text'
 
 interface CaptionListProps {
   captions: ParsedCaption[]
@@ -35,12 +36,12 @@ export function CaptionList({
   const listRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
-    if (currentIndex === null || !listRef.current) return
+    if (selectedIndex === null || !listRef.current) return
     const target = listRef.current.querySelector<HTMLButtonElement>(
-      `[data-caption-index="${currentIndex}"]`
+      `[data-caption-index="${selectedIndex}"]`
     )
     target?.scrollIntoView({ block: 'nearest' })
-  }, [currentIndex])
+  }, [selectedIndex])
 
   if (captions.length === 0) {
     return (
@@ -53,7 +54,7 @@ export function CaptionList({
   return (
     <div
       ref={listRef}
-      className="space-y-2 max-h-[calc(100vh-20rem)] overflow-y-auto pr-2"
+      className="space-y-2"
     >
       {captions.map((caption) => {
         const isSelected = selectedIndex === caption.index
@@ -81,7 +82,7 @@ export function CaptionList({
               </span>
             </div>
             <div className="mt-1 text-sm text-secondary-100 truncate">
-              {caption.plainText || caption.text}
+              {assTextToPlain(caption.text) || caption.plainText || caption.text}
             </div>
           </button>
         )

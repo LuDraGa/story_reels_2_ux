@@ -1120,7 +1120,11 @@ function bgrToCSS(bgrHex: string): string {
 | Phase 2: Timeline & Sync | ✅ Complete | 6/6 tasks |
 | Phase 3: Text & Timing Edit | ✅ Complete | 6/6 tasks |
 | Phase 4: ASS Rendering | ✅ Complete | 7/7 tasks |
+| Phase 5: Position Editing | ✅ Complete | 3/3 tasks |
+| Phase 6: Style Editing | ✅ Complete | 4/4 tasks |
+| Phase 7: Save & Regenerate | ✅ Complete | 6/6 tasks |
+| Phase 8: Polish & UX | 🟡 In Progress | 2/7 tasks |
 
-**Next Steps**: Phase 5 (Position Editing UI + drag on canvas) and Phase 6 (Style panel).
+**Next Steps**: Continue Phase 8 (shortcuts, undo/redo, UX, tooltips).
 
 **Last Updated**: 2026-02-13

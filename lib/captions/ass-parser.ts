@@ -12,6 +12,7 @@
 
 import type { ASSStyle } from './ass-presets'
 import { parseASSTime, formatASSTime } from './ass-presets'
+import { assTextToPlain } from './ass-text'
 
 // ============================================================================
 // Type Definitions
@@ -325,17 +326,17 @@ export function stripASSTags(text: string): string {
  * @returns Text with ASS tags
  */
 export function rebuildASSText(plainText: string, originalText: string): string {
-  // For MVP: If text hasn't changed much, try to preserve tags
-  const originalPlain = stripASSTags(originalText)
-
-  if (plainText === originalPlain) {
-    // Text unchanged, keep original tags
+  const normalizedPlain = plainText.replace(/\r\n/g, '\n')
+  const displayPlain = assTextToPlain(originalText)
+  if (normalizedPlain === displayPlain) {
     return originalText
   }
 
-  // Preserve positional overrides when text changes
+  const safePlain = normalizedPlain.replace(/\n/g, '\\N')
   const prefixMatch = originalText.match(/^(\{[^}]*\})+/)
   const prefix = prefixMatch ? prefixMatch[0] : ''
+  const remainder = originalText.slice(prefix.length)
+
   const overrideTags: string[] = []
   const alignmentMatch = prefix.match(/\\an\d+/gi)
   if (alignmentMatch) {
@@ -347,7 +348,98 @@ export function rebuildASSText(plainText: string, originalText: string): string 
   }
 
   const overridePrefix = overrideTags.length ? `{${overrideTags.join('')}}` : ''
-  return `${overridePrefix}${plainText}`
+  if (safePlain.includes('\\N')) {
+    return `${overridePrefix}${safePlain}`
+  }
+
+  const cleanedPrefix = prefix
+    .replace(/\\pos\([^)]*\)/gi, '')
+    .replace(/\\an\d+/gi, '')
+    .replace(/\{\s*\}/g, '')
+  const textWithoutOverrides = `${cleanedPrefix}${remainder}`
+
+  const karaokeSegments = extractKaraokeSegments(textWithoutOverrides)
+  if (karaokeSegments.length === 0) {
+    if (cleanedPrefix && cleanedPrefix !== prefix) {
+      return `${overridePrefix}${cleanedPrefix}${safePlain}`
+    }
+    return `${overridePrefix}${safePlain}`
+  }
+
+  const words = safePlain.trim().split(/\s+/).filter(Boolean)
+  if (words.length === 0) {
+    return `${overridePrefix}${safePlain}`
+  }
+
+  const baseDurations = karaokeSegments.map((segment) => segment.duration ?? 0)
+  const totalDuration = baseDurations.reduce((sum, value) => sum + value, 0)
+  const durations =
+    karaokeSegments.length === words.length && totalDuration > 0
+      ? baseDurations
+      : distributeKaraokeDurations(words, totalDuration || words.length * 10)
+
+  const rebuilt = words
+    .map((word, index) => {
+      const spacer = index === 0 ? '' : ' '
+      const segment = karaokeSegments[index]
+      if (segment) {
+        const tagContent = segment.tagContent.replace(/\\k\d+/i, `\\k${durations[index]}`)
+        const postTags = segment.postTags ? `{${segment.postTags}}` : ''
+        return `{${tagContent}}${spacer}${word}${postTags}`
+      }
+      return `{\\k${durations[index]}}${spacer}${word}`
+    })
+    .join('')
+
+  return `${overridePrefix}${rebuilt}`
+}
+
+type KaraokeSegment = {
+  tagContent: string
+  duration?: number
+  postTags?: string
+}
+
+function extractKaraokeSegments(text: string): KaraokeSegment[] {
+  const segments: KaraokeSegment[] = []
+  const regex = /\{([^}]*)\}/g
+  let match: RegExpExecArray | null
+  let activeIndex = -1
+  while ((match = regex.exec(text))) {
+    const tagContent = match[1]
+    const karaokeMatch = tagContent.match(/\\k(\d+)/i)
+    if (karaokeMatch) {
+      segments.push({
+        tagContent,
+        duration: Number(karaokeMatch[1]),
+      })
+      activeIndex = segments.length - 1
+      continue
+    }
+    if (activeIndex >= 0) {
+      const existing = segments[activeIndex]
+      const nextPost = existing.postTags ? `${existing.postTags}${tagContent}` : tagContent
+      segments[activeIndex] = { ...existing, postTags: nextPost }
+    }
+  }
+  return segments
+}
+
+function distributeKaraokeDurations(words: string[], totalDuration: number): number[] {
+  if (totalDuration <= 0) {
+    return words.map(() => 10)
+  }
+  const weights = words.map((word) => Math.max(1, word.length))
+  const totalWeight = weights.reduce((sum, value) => sum + value, 0)
+  let remaining = totalDuration
+  return words.map((word, index) => {
+    if (index === words.length - 1) {
+      return Math.max(1, remaining)
+    }
+    const share = Math.max(1, Math.round((weights[index] / totalWeight) * totalDuration))
+    remaining -= share
+    return share
+  })
 }
 
 // ============================================================================

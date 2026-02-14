@@ -22,9 +22,11 @@ import { composeReel } from '@/lib/api/ffmpeg'
 // ============================================================================
 
 interface ComposeRequest {
+  project_id?: string | null
   audio_url: string
   background_videos: string[]
   subtitles_url?: string | null
+  subtitles_path?: string | null
   music_url?: string | null
   music_volume?: number
 }
@@ -48,9 +50,11 @@ export async function POST(req: NextRequest) {
     // Parse request body
     const body: ComposeRequest = await req.json()
     const {
+      project_id = null,
       audio_url,
       background_videos,
       subtitles_url = null,
+      subtitles_path = null,
       music_url = null,
       music_volume = 0.2,
     } = body
@@ -72,10 +76,25 @@ export async function POST(req: NextRequest) {
     console.log('[Video Compose] Inputs:', {
       audio_url,
       background_videos: background_videos.length,
-      has_subtitles: !!subtitles_url,
+      has_subtitles: !!subtitles_url || !!subtitles_path,
       has_music: !!music_url,
       music_volume,
     })
+
+    const supabase = await createSupabaseServerClient()
+
+    let resolvedSubtitlesUrl = subtitles_url
+    if (subtitles_path && subtitles_path.startsWith('projects/')) {
+      const { data: subtitleData, error: subtitleError } = await supabase.storage
+        .from('projects')
+        .createSignedUrl(subtitles_path, 3600)
+
+      if (subtitleError) {
+        console.warn('[Video Compose] Failed to sign subtitles path:', subtitleError.message)
+      } else if (subtitleData?.signedUrl) {
+        resolvedSubtitlesUrl = subtitleData.signedUrl
+      }
+    }
 
     // Get audio duration from URL (probe it)
     // For now, we'll estimate duration from background videos
@@ -88,7 +107,7 @@ export async function POST(req: NextRequest) {
       background_videos,
       audio_url,
       duration: estimatedDuration,
-      subtitles_url,
+      subtitles_url: resolvedSubtitlesUrl,
       subtitle_format: 'ass', // Always use ASS format for TikTok-style captions
       music_url,
       music_volume,
@@ -115,7 +134,6 @@ export async function POST(req: NextRequest) {
     })
 
     // Get Supabase client (try to get user, but support anonymous for one-off studio)
-    const supabase = await createSupabaseServerClient()
     const {
       data: { user },
     } = await supabase.auth.getUser()
@@ -167,6 +185,37 @@ export async function POST(req: NextRequest) {
         { error: 'Failed to generate signed URL' },
         { status: 500 }
       )
+    }
+
+    if (user && project_id) {
+      const { error: projectError } = await supabase
+        .from('projects')
+        .select('id')
+        .eq('id', project_id)
+        .eq('user_id', user.id)
+        .single()
+
+      if (projectError) {
+        console.warn('[Video Compose] Skipping video asset save:', projectError.message)
+      } else {
+        const { error: assetError } = await supabase.from('video_assets').insert({
+          project_id,
+          storage_path: storagePath,
+          background_asset_id: null,
+          srt_path: null,
+          render_settings_json: {
+            subtitles_path: subtitles_path,
+            subtitles_url: resolvedSubtitlesUrl,
+            background_videos,
+            music_url,
+            music_volume,
+          },
+        })
+
+        if (assetError) {
+          console.warn('[Video Compose] Failed to save video asset:', assetError.message)
+        }
+      }
     }
 
     // Build response

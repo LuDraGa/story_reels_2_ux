@@ -36,6 +36,7 @@ export type EditorAction =
   | { type: 'SET_ERROR'; error: string | null }
   | { type: 'LOAD_ASS_SUCCESS'; payload: ParsedASS; videoUrl: string }
   | { type: 'SET_CAPTIONS'; captions: ParsedCaption[] }
+  | { type: 'UPDATE_STYLE'; name: string; updates: Partial<ParsedASS['styles'][number]> }
 
   // Caption operations
   | { type: 'SELECT_CAPTION'; index: number | null }

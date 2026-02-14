@@ -5,6 +5,8 @@ import { Loader2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
 import { getCaptionAtTime, parseASS, serializeASS } from '@/lib/captions/ass-parser'
+import type { ParsedCaption } from '@/lib/captions/ass-parser'
+import { assTextToPlain } from '@/lib/captions/ass-text'
 import { EditorSidebar } from './editor/EditorSidebar'
 import { VideoPlayer } from './editor/VideoPlayer'
 import { Timeline } from './editor/Timeline'
@@ -15,6 +17,7 @@ interface ASSEditorModalProps {
   onClose: () => void
   projectId: string
   assUrl: string
+  assPath?: string | null
   videoUrl?: string | null
   onSave: (newAssUrl: string) => void
 }
@@ -32,7 +35,30 @@ const initialState: EditorState = {
   isSaving: false,
 }
 
-const getDraftKey = (projectId: string) => `ass-editor-draft:${projectId}`
+const getDraftKey = (projectId: string, storageKey: string) =>
+  `ass-editor-draft:${projectId}:${storageKey}`
+
+const extractStoragePath = (url: string): string | null => {
+  if (!url || url.startsWith('data:')) return null
+  try {
+    const parsed = new URL(url)
+    const marker = '/storage/v1/object/'
+    const markerIndex = parsed.pathname.indexOf(marker)
+    if (markerIndex === -1) return null
+    let afterMarker = parsed.pathname.slice(markerIndex + marker.length)
+    if (afterMarker.startsWith('sign/')) {
+      afterMarker = afterMarker.slice('sign/'.length)
+    }
+    const parts = afterMarker.split('/')
+    if (parts.length < 2) return null
+    const bucket = parts[0]
+    const pathParts = parts.slice(1)
+    if (bucket !== 'projects') return null
+    return pathParts.join('/')
+  } catch {
+    return null
+  }
+}
 
 function editorReducer(state: EditorState, action: EditorAction): EditorState {
   switch (action.type) {
@@ -54,6 +80,17 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
       return {
         ...state,
         parsed: { ...state.parsed, captions: action.captions },
+        isDirty: true,
+      }
+    }
+    case 'UPDATE_STYLE': {
+      if (!state.parsed) return state
+      const nextStyles = state.parsed.styles.map((style) =>
+        style.Name === action.name ? { ...style, ...action.updates } : style
+      )
+      return {
+        ...state,
+        parsed: { ...state.parsed, styles: nextStyles },
         isDirty: true,
       }
     }
@@ -115,6 +152,7 @@ export function ASSEditorModal({
   onClose,
   projectId,
   assUrl,
+  assPath,
   videoUrl,
   onSave: _onSave,
 }: ASSEditorModalProps) {
@@ -122,6 +160,13 @@ export function ASSEditorModal({
   const [state, dispatch] = useReducer(editorReducer, initialState)
   const originalAssRef = useRef<string | null>(null)
   const [draftLoaded, setDraftLoaded] = useState(false)
+  const [positionDragEnabled, setPositionDragEnabled] = useState(false)
+  const [showAssViewer, setShowAssViewer] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
+  const storageKey = useMemo(
+    () => assPath || extractStoragePath(assUrl) || assUrl,
+    [assPath, assUrl]
+  )
 
   useEffect(() => {
     if (!isOpen) return
@@ -148,16 +193,24 @@ export function ASSEditorModal({
         let usedDraft = false
 
         if (typeof window !== 'undefined') {
-          const stored = localStorage.getItem(getDraftKey(projectId))
+          const stored = localStorage.getItem(getDraftKey(projectId, storageKey))
           if (stored) {
             try {
-              const draft = JSON.parse(stored) as { assUrl?: string; content?: string }
-              if (draft.assUrl === assUrl && draft.content) {
+              const draft = JSON.parse(stored) as {
+                storageKey?: string
+                assUrl?: string
+                content?: string
+              }
+              const matchesKey = draft.storageKey
+                ? draft.storageKey === storageKey
+                : draft.assUrl === assUrl
+
+              if (matchesKey && draft.content) {
                 if (draft.content !== assContent) {
                   parsed = parseASS(draft.content)
                   usedDraft = true
                 } else {
-                  localStorage.removeItem(getDraftKey(projectId))
+                  localStorage.removeItem(getDraftKey(projectId, storageKey))
                 }
               }
             } catch (error) {
@@ -195,12 +248,12 @@ export function ASSEditorModal({
     return () => {
       isMounted = false
     }
-  }, [assUrl, isOpen, projectId, toast, videoUrl])
+  }, [assUrl, isOpen, projectId, storageKey, toast, videoUrl])
 
   const handleDiscardDraft = () => {
     if (!originalAssRef.current) return
     try {
-      localStorage.removeItem(getDraftKey(projectId))
+      localStorage.removeItem(getDraftKey(projectId, storageKey))
       const parsed = parseASS(originalAssRef.current)
       dispatch({
         type: 'LOAD_ASS_SUCCESS',
@@ -214,6 +267,84 @@ export function ASSEditorModal({
     }
   }
 
+  const handleSaveDraft = () => {
+    if (!state.parsed) return
+    try {
+      const content = serializeASS(state.parsed)
+      const payload = {
+        assUrl,
+        storageKey,
+        content,
+        updatedAt: new Date().toISOString(),
+      }
+      localStorage.setItem(getDraftKey(projectId, storageKey), JSON.stringify(payload))
+      const reParsed = parseASS(content)
+      dispatch({
+        type: 'LOAD_ASS_SUCCESS',
+        payload: reParsed,
+        videoUrl: state.videoUrl,
+      })
+      if (state.selectedCaptionIndex !== null) {
+        dispatch({ type: 'SELECT_CAPTION', index: state.selectedCaptionIndex })
+      }
+      dispatch({ type: 'SET_CURRENT_TIME', time: state.currentTime })
+      dispatch({ type: 'MARK_CLEAN' })
+      setDraftLoaded(true)
+      toast({
+        title: 'Draft saved locally',
+        description: 'Uploading latest captions for video rendering...',
+      })
+
+      if (!storageKey || storageKey.startsWith('http') || storageKey.startsWith('data:')) {
+        toast({
+          title: 'Draft saved locally',
+          description: 'Sync skipped: no storage path available.',
+        })
+        return
+      }
+
+      fetch('/api/captions/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storagePath: storageKey,
+          content,
+        }),
+      })
+        .then(async (response) => {
+          if (!response.ok) {
+            const error = await response.json()
+            throw new Error(error.error || 'Failed to save captions')
+          }
+          return response.json()
+        })
+        .then((data: { assUrl: string }) => {
+          if (data.assUrl) {
+            _onSave(data.assUrl)
+          }
+          toast({
+            title: 'Draft synced',
+            description: 'Captions updated for the next video render.',
+          })
+        })
+        .catch((error) => {
+          console.error('Failed to sync ASS:', error)
+          toast({
+            title: 'Draft sync failed',
+            description: error instanceof Error ? error.message : 'Unable to sync captions',
+            variant: 'destructive',
+          })
+        })
+    } catch (error) {
+      console.error('Failed to save draft:', error)
+      toast({
+        title: 'Draft save failed',
+        description: 'Unable to save draft locally.',
+        variant: 'destructive',
+      })
+    }
+  }
+
   useEffect(() => {
     if (!state.parsed || !state.isDirty) return
     const timeout = window.setTimeout(() => {
@@ -221,10 +352,11 @@ export function ASSEditorModal({
         const content = serializeASS(state.parsed)
         const payload = {
           assUrl,
+          storageKey,
           content,
           updatedAt: new Date().toISOString(),
         }
-        localStorage.setItem(getDraftKey(projectId), JSON.stringify(payload))
+        localStorage.setItem(getDraftKey(projectId, storageKey), JSON.stringify(payload))
       } catch (error) {
         console.error('Failed to save ASS draft:', error)
       }
@@ -233,7 +365,7 @@ export function ASSEditorModal({
     return () => {
       window.clearTimeout(timeout)
     }
-  }, [assUrl, projectId, state.isDirty, state.parsed])
+  }, [assUrl, projectId, state.isDirty, state.parsed, storageKey])
 
   const currentCaptionIndex = useMemo(() => {
     if (!state.parsed) return null
@@ -373,7 +505,7 @@ export function ASSEditorModal({
       splitTime = caption.start + (caption.end - caption.start) / 2
     }
 
-    const words = (caption.plainText || caption.text).trim().split(/\s+/).filter(Boolean)
+    const words = assTextToPlain(caption.text).trim().split(/\s+/).filter(Boolean)
     let firstText = caption.plainText || caption.text
     let secondText = caption.plainText || caption.text
     if (words.length >= 2) {
@@ -453,6 +585,107 @@ export function ASSEditorModal({
     }
   }
 
+  const handleRequestClose = () => {
+    if (state.isDirty && typeof window !== 'undefined') {
+      const confirmed = window.confirm('You have unsaved changes. Close anyway?')
+      if (!confirmed) return
+    }
+    onClose()
+  }
+
+  useEffect(() => {
+    if (!isOpen) return
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!state.parsed) return
+      const target = event.target as HTMLElement | null
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        handleRequestClose()
+        return
+      }
+
+      if (event.key === ' ') {
+        event.preventDefault()
+        dispatch({ type: 'SET_PLAYING', playing: !state.isPlaying })
+        return
+      }
+
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        event.preventDefault()
+        const direction = event.key === 'ArrowRight' ? 1 : -1
+        const step = event.shiftKey ? 1 : 0.1
+        const nextTime = Math.min(
+          Math.max(state.currentTime + direction * step, 0),
+          state.duration || state.currentTime
+        )
+        dispatch({ type: 'SET_CURRENT_TIME', time: nextTime })
+        return
+      }
+
+      if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+        event.preventDefault()
+        const captions = state.parsed.captions
+        if (captions.length === 0) return
+        const currentIndex =
+          state.selectedCaptionIndex ?? captions[0]?.index ?? 0
+        const currentPosition = captions.findIndex(
+          (caption) => caption.index === currentIndex
+        )
+        const nextPosition =
+          event.key === 'ArrowDown'
+            ? Math.min(captions.length - 1, currentPosition + 1)
+            : Math.max(0, currentPosition - 1)
+        const nextCaption = captions[nextPosition]
+        if (nextCaption) {
+          handleSelectCaption(nextCaption.index)
+        }
+        return
+      }
+
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        if (state.selectedCaptionIndex === null) return
+        event.preventDefault()
+        handleDeleteCaption()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [
+    isOpen,
+    state.parsed,
+    state.isPlaying,
+    state.currentTime,
+    state.duration,
+    state.selectedCaptionIndex,
+    handleRequestClose,
+    handleSelectCaption,
+    handleDeleteCaption,
+  ])
+
+  useEffect(() => {
+    if (!isOpen || !state.isDirty) return
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [isOpen, state.isDirty])
+
   if (!isOpen) return null
 
   return (
@@ -469,10 +702,31 @@ export function ASSEditorModal({
             type="button"
             variant="outline"
             size="sm"
-            disabled
+            onClick={handleSaveDraft}
+            title="Save captions and sync to storage"
             className="rounded-lg border-secondary-700 text-secondary-200"
           >
             Save Draft
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setShowAssViewer(true)}
+            title="View the full ASS file"
+            className="rounded-lg border-secondary-700 text-secondary-200"
+          >
+            View ASS
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setShowHelp(true)}
+            title="Editor help and shortcuts"
+            className="rounded-lg border-secondary-700 text-secondary-200"
+          >
+            Help
           </Button>
           {draftLoaded && (
             <Button
@@ -480,6 +734,7 @@ export function ASSEditorModal({
               variant="outline"
               size="sm"
               onClick={handleDiscardDraft}
+              title="Discard local draft and reload original captions"
               className="rounded-lg border-secondary-700 text-secondary-200"
             >
               Discard Draft
@@ -487,17 +742,10 @@ export function ASSEditorModal({
           )}
           <Button
             type="button"
-            size="sm"
-            disabled
-            className="rounded-lg bg-gradient-sage text-white"
-          >
-            Apply Changes
-          </Button>
-          <Button
-            type="button"
             variant="outline"
             size="sm"
-            onClick={onClose}
+            onClick={handleRequestClose}
+            title="Close editor"
             className="rounded-lg border-secondary-700 text-secondary-200"
           >
             <X className="h-4 w-4" />
@@ -527,6 +775,23 @@ export function ASSEditorModal({
               captions={state.parsed?.captions}
               styles={state.parsed?.styles}
               scriptInfo={state.parsed?.scriptInfo}
+              enablePositionDrag={positionDragEnabled}
+              onPositionChange={(position) => {
+                if (!state.parsed || state.selectedCaptionIndex === null) return
+                const caption = state.parsed.captions.find(
+                  (item) => item.index === state.selectedCaptionIndex
+                )
+                if (!caption) return
+                const newText = updateCaptionOverrides(caption.text, {
+                  alignment: selectedCaptionOverrides.alignment,
+                  position,
+                })
+                dispatch({
+                  type: 'UPDATE_CAPTION',
+                  index: caption.index,
+                  caption: { text: newText },
+                })
+              }}
             />
           )}
         </div>
@@ -534,6 +799,7 @@ export function ASSEditorModal({
         {state.parsed && !state.isLoading ? (
           <EditorSidebar
             captions={state.parsed.captions}
+            styles={state.parsed.styles}
             selectedIndex={state.selectedCaptionIndex}
             currentIndex={currentCaptionIndex}
             duration={sidebarDuration}
@@ -577,6 +843,11 @@ export function ASSEditorModal({
                 caption: { text: newText },
               })
             }}
+            onUpdateStyle={(name, updates) =>
+              dispatch({ type: 'UPDATE_STYLE', name, updates })
+            }
+            isPositionDragEnabled={positionDragEnabled}
+            onTogglePositionDrag={() => setPositionDragEnabled((prev) => !prev)}
             onAddCaption={handleAddCaption}
             onDeleteCaption={handleDeleteCaption}
             onSplitCaption={handleSplitCaption}
@@ -605,6 +876,85 @@ export function ASSEditorModal({
           }
         />
       </div>
+
+      {showAssViewer && state.parsed && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6">
+          <div className="w-full max-w-5xl rounded-2xl border border-secondary-800 bg-secondary-900 p-6 shadow-xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-secondary-100">ASS File</h3>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setShowAssViewer(false)}
+                className="rounded-lg border-secondary-700 text-secondary-200"
+              >
+                Close
+              </Button>
+            </div>
+            <textarea
+              readOnly
+              value={serializeASS(state.parsed)}
+              className="mt-4 h-[60vh] w-full resize-none rounded-xl border border-secondary-800 bg-secondary-950 px-4 py-3 font-mono text-xs text-secondary-200"
+            />
+          </div>
+        </div>
+      )}
+
+      {showHelp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6">
+          <div className="w-full max-w-2xl rounded-2xl border border-secondary-800 bg-secondary-900 p-6 shadow-xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-secondary-100">Editor Help</h3>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setShowHelp(false)}
+                className="rounded-lg border-secondary-700 text-secondary-200"
+              >
+                Close
+              </Button>
+            </div>
+            <div className="mt-4 grid gap-4 text-sm text-secondary-200">
+              <div>
+                <h4 className="text-[11px] uppercase tracking-wide text-secondary-400">
+                  Shortcuts
+                </h4>
+                <ul className="mt-2 space-y-1">
+                  <li>
+                    <span className="font-mono">Space</span> Play/Pause
+                  </li>
+                  <li>
+                    <span className="font-mono">Left/Right</span> Step 0.1s
+                    (Shift = 1s)
+                  </li>
+                  <li>
+                    <span className="font-mono">Up/Down</span> Previous/Next caption
+                  </li>
+                  <li>
+                    <span className="font-mono">Delete</span> Remove selected caption
+                  </li>
+                  <li>
+                    <span className="font-mono">Esc</span> Close editor
+                  </li>
+                </ul>
+              </div>
+              <div>
+                <h4 className="text-[11px] uppercase tracking-wide text-secondary-400">
+                  Editing Tips
+                </h4>
+                <ul className="mt-2 space-y-1">
+                  <li>Drag caption blocks on the timeline to change timing.</li>
+                  <li>Use the Position section to align or drag captions on video.</li>
+                  <li>Style changes update all captions using the same style.</li>
+                  <li>Save Draft to sync captions for the next video compose.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
