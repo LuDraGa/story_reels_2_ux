@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Pause, Play } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { ParsedCaption } from '@/lib/captions/ass-parser'
@@ -10,6 +10,10 @@ import { getCaptionAtTime } from '@/lib/captions/ass-parser'
 
 interface VideoPlayerProps {
   videoUrl?: string | null
+  audioUrl?: string | null
+  musicUrl?: string | null
+  musicVolume?: number
+  onMusicVolumeChange?: (volume: number) => void
   currentTime: number
   isPlaying: boolean
   onTimeUpdate: (time: number) => void
@@ -39,6 +43,10 @@ function formatTimestamp(seconds: number): string {
 
 export function VideoPlayer({
   videoUrl,
+  audioUrl,
+  musicUrl,
+  musicVolume,
+  onMusicVolumeChange,
   currentTime,
   isPlaying,
   onTimeUpdate,
@@ -51,9 +59,23 @@ export function VideoPlayer({
   onPositionChange,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const musicRef = useRef<HTMLAudioElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const canvasSizeRef = useRef({ width: 0, height: 0 })
+  const [localMusicVolume, setLocalMusicVolume] = useState(0.2)
+
+  useEffect(() => {
+    if (typeof musicVolume === 'number' && Number.isFinite(musicVolume)) {
+      setLocalMusicVolume(musicVolume)
+    }
+  }, [musicVolume])
+
+  const effectiveMusicVolume =
+    typeof musicVolume === 'number' && Number.isFinite(musicVolume)
+      ? musicVolume
+      : localMusicVolume
   const isDraggingRef = useRef(false)
 
   const activeCaption = useMemo(() => {
@@ -219,12 +241,64 @@ export function VideoPlayer({
   }, [isPlaying, onPlayPause])
 
   useEffect(() => {
+    const audio = audioRef.current
+    if (!audio || !audioUrl) return
+    if (isPlaying) {
+      const playPromise = audio.play()
+      if (playPromise) {
+        playPromise.catch(() => {
+          onPlayPause(false)
+        })
+      }
+    } else {
+      audio.pause()
+    }
+  }, [audioUrl, isPlaying, onPlayPause])
+
+  useEffect(() => {
+    const music = musicRef.current
+    if (!music || !musicUrl) return
+    if (isPlaying) {
+      const playPromise = music.play()
+      if (playPromise) {
+        playPromise.catch(() => {
+          onPlayPause(false)
+        })
+      }
+    } else {
+      music.pause()
+    }
+  }, [musicUrl, isPlaying, onPlayPause])
+
+  useEffect(() => {
     const video = videoRef.current
     if (!video || !Number.isFinite(currentTime)) return
     if (Math.abs(video.currentTime - currentTime) > 0.2) {
       video.currentTime = currentTime
     }
   }, [currentTime])
+
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio || !Number.isFinite(currentTime)) return
+    if (Math.abs(audio.currentTime - currentTime) > 0.2) {
+      audio.currentTime = currentTime
+    }
+  }, [currentTime])
+
+  useEffect(() => {
+    const music = musicRef.current
+    if (!music || !Number.isFinite(currentTime)) return
+    if (Math.abs(music.currentTime - currentTime) > 0.2) {
+      music.currentTime = currentTime
+    }
+  }, [currentTime])
+
+  useEffect(() => {
+    const music = musicRef.current
+    if (!music) return
+    music.volume = Math.max(0, Math.min(1, effectiveMusicVolume))
+  }, [effectiveMusicVolume])
 
   useEffect(() => {
     const container = containerRef.current
@@ -494,12 +568,15 @@ export function VideoPlayer({
         <video
           ref={videoRef}
           src={videoUrl}
+          muted
           className="aspect-video w-full"
           onTimeUpdate={(event) => onTimeUpdate(event.currentTarget.currentTime)}
           onLoadedMetadata={(event) => onLoadedMetadata(event.currentTarget.duration)}
           onEnded={() => onPlayPause(false)}
           onClick={() => onPlayPause(!isPlaying)}
         />
+        {audioUrl && <audio ref={audioRef} src={audioUrl} preload="metadata" />}
+        {musicUrl && <audio ref={musicRef} src={musicUrl} preload="metadata" />}
         <canvas
           ref={canvasRef}
           className={
@@ -509,26 +586,46 @@ export function VideoPlayer({
           }
         />
       </div>
-      <div className="flex items-center justify-between rounded-xl border border-secondary-800 bg-secondary-900/40 px-3 py-2 text-xs text-secondary-300">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-secondary-800 bg-secondary-900/40 px-3 py-2 text-xs text-secondary-300">
         <div className="flex items-center gap-2">
           <Button
             type="button"
             size="sm"
             variant="outline"
             onClick={() => onPlayPause(!isPlaying)}
-            className="h-8 rounded-lg border-secondary-700 text-secondary-100 hover:bg-secondary-800"
+            className="h-8 rounded-lg border-secondary-700 bg-secondary-900 text-secondary-100 hover:bg-secondary-800"
           >
             {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
           </Button>
-          <span className="font-mono">
-            {formatTimestamp(currentTime)}
-          </span>
+          <span className="font-mono">{formatTimestamp(currentTime)}</span>
           <span className="text-secondary-500">/</span>
           <span className="font-mono text-secondary-400">
             {formatTimestamp(videoRef.current?.duration || 0)}
           </span>
         </div>
-        <span className="text-secondary-500">Click video to toggle play</span>
+        <div className="flex items-center gap-2">
+          {musicUrl && (
+            <>
+              <span className="text-secondary-500">BGM</span>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={effectiveMusicVolume}
+                onChange={(event) => {
+                  const nextValue = Number(event.target.value)
+                  setLocalMusicVolume(nextValue)
+                  if (onMusicVolumeChange) {
+                    onMusicVolumeChange(nextValue)
+                  }
+                }}
+                className="h-1 w-24 accent-accent-sage"
+              />
+            </>
+          )}
+          <span className="text-secondary-500">Click video to toggle play</span>
+        </div>
       </div>
     </div>
   )

@@ -21,6 +21,7 @@ export interface StudioState {
   assUrl: string | null // ASS caption file URL (TikTok-style karaoke)
   transcriptionUrl: string | null // Transcription JSON URL
   assPath: string | null // Storage path for ASS (authenticated only)
+  srtPath: string | null // Storage path for SRT (authenticated only)
   captionStyle: 'tiktok' | 'instagram' | 'youtube' // Selected caption style preset
   captionMetadata: {
     wordCount?: number
@@ -104,6 +105,7 @@ function getInitialState(): StudioState {
     assUrl: null,
     transcriptionUrl: null,
     assPath: null,
+    srtPath: null,
     captionStyle: 'tiktok', // Default to TikTok style
     captionMetadata: null,
     selectedVideos: [],
@@ -196,7 +198,8 @@ export function useStudioState() {
       transcriptionUrl: string,
       assUrl: string,
       metadata?: StudioState['captionMetadata'],
-      assPath?: string | null
+      assPath?: string | null,
+      srtPath?: string | null
     ) => {
       setState(prev => ({
         ...prev,
@@ -204,6 +207,7 @@ export function useStudioState() {
         assUrl,
         transcriptionUrl,
         assPath: assPath ?? prev.assPath ?? null,
+        srtPath: srtPath ?? prev.srtPath ?? null,
         captionMetadata: metadata || null,
       }))
     },

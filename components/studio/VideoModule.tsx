@@ -135,7 +135,7 @@ export function VideoModule({
 
   const canGenerate = audioUrl && selectedVideos.length > 0
   const canEditCaptions = !!assUrl && !!projectId
-  const previewVideoUrl = videoUrl || selectedVideos[0] || null
+  const previewVideoUrl = selectedVideos[0] || null
 
   return (
     <Card className="w-full">
@@ -290,6 +290,12 @@ export function VideoModule({
           assUrl={assUrl}
           assPath={assPath || null}
           videoUrl={previewVideoUrl}
+          audioUrl={audioUrl}
+          musicUrl={selectedMusic}
+          musicVolume={settings.musicVolume}
+          onMusicVolumeChange={(volume) =>
+            setSettings((prev) => ({ ...prev, musicVolume: volume }))
+          }
           onSave={(newAssUrl) => {
             if (newAssUrl && onAssUrlChange) {
               onAssUrlChange(newAssUrl)

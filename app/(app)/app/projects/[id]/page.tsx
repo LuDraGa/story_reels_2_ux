@@ -19,6 +19,7 @@ interface ProjectWorkspaceProps {
 
 export default function ProjectPage({ params }: ProjectWorkspaceProps) {
   const projectId = params.id
+  const captionsStorageKey = `reel-captions:${projectId}`
   const [project, setProject] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [sourceText, setSourceText] = useState('')
@@ -31,6 +32,7 @@ export default function ProjectPage({ params }: ProjectWorkspaceProps) {
   const [srtUrl, setSrtUrl] = useState<string | null>(null)
   const [assUrl, setAssUrl] = useState<string | null>(null)
   const [assPath, setAssPath] = useState<string | null>(null)
+  const [srtPath, setSrtPath] = useState<string | null>(null)
   const [captionStyle, setCaptionStyle] = useState<'tiktok' | 'instagram' | 'youtube'>('tiktok')
   const [captionMetadata, setCaptionMetadata] = useState<any>(null)
   // Asset selection state
@@ -41,6 +43,62 @@ export default function ProjectPage({ params }: ProjectWorkspaceProps) {
   useEffect(() => {
     loadProject()
   }, [projectId])
+
+  const loadPersistedCaptions = async () => {
+    if (typeof window === 'undefined') return
+    try {
+      const stored = localStorage.getItem(captionsStorageKey)
+      if (!stored) return
+      const parsed = JSON.parse(stored) as {
+        assPath?: string | null
+        srtPath?: string | null
+        metadata?: any
+        captionStyle?: 'tiktok' | 'instagram' | 'youtube'
+      }
+
+      const resolvedAssPath = parsed.assPath || null
+      const resolvedSrtPath = parsed.srtPath || null
+
+      if (parsed.captionStyle) {
+        setCaptionStyle(parsed.captionStyle)
+      }
+      if (parsed.metadata) {
+        setCaptionMetadata(parsed.metadata)
+      }
+
+      if (resolvedAssPath) {
+        const response = await fetch('/api/captions/sign', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ storagePath: resolvedAssPath }),
+        })
+        if (response.ok) {
+          const data = (await response.json()) as { assUrl?: string }
+          if (data.assUrl) {
+            setAssUrl(data.assUrl)
+            setAssPath(resolvedAssPath)
+          }
+        }
+      }
+
+      if (resolvedSrtPath) {
+        const response = await fetch('/api/captions/sign', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ storagePath: resolvedSrtPath }),
+        })
+        if (response.ok) {
+          const data = (await response.json()) as { assUrl?: string }
+          if (data.assUrl) {
+            setSrtUrl(data.assUrl)
+            setSrtPath(resolvedSrtPath)
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to load persisted captions:', error)
+    }
+  }
 
   const loadProject = async () => {
     setIsLoading(true)
@@ -85,6 +143,7 @@ export default function ProjectPage({ params }: ProjectWorkspaceProps) {
         // TODO: Generate public URL
         setVideoUrl(videoSignedUrl || videoPath)
       }
+      await loadPersistedCaptions()
     } catch (error) {
       console.error('Failed to load project:', error)
     } finally {
@@ -123,13 +182,26 @@ export default function ProjectPage({ params }: ProjectWorkspaceProps) {
     transcription: string,
     ass: string,
     metadata?: any,
-    newAssPath?: string | null
+    newAssPath?: string | null,
+    newSrtPath?: string | null
   ) => {
     setSrtUrl(srt)
     setAssUrl(ass)
     setAssPath(newAssPath || null)
+    setSrtPath(newSrtPath || null)
     setCaptionMetadata(metadata)
     // TODO: Save caption assets to database
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(
+        captionsStorageKey,
+        JSON.stringify({
+          assPath: newAssPath || null,
+          srtPath: newSrtPath || null,
+          captionStyle,
+          metadata: metadata || null,
+        })
+      )
+    }
   }
 
   const handleCaptionStyleChange = (style: 'tiktok' | 'instagram' | 'youtube') => {

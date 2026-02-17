@@ -54,10 +54,11 @@ export default function Home() {
           />
 
           {/* Module 3: TTS */}
-          <TTSModule
-            script={state.script}
-            sessionId={state.sessionId}
-            audioUrl={state.audioUrl}
+        <TTSModule
+          script={state.script}
+          sessionId={state.sessionId}
+          projectId={undefined}
+          audioUrl={state.audioUrl}
             selectedSpeakerId={state.selectedSpeakerId}
             onSpeakerSelect={updateSelectedSpeaker}
             onAudioGenerated={updateAudio}

@@ -19,6 +19,10 @@ interface ASSEditorModalProps {
   assUrl: string
   assPath?: string | null
   videoUrl?: string | null
+  audioUrl?: string | null
+  musicUrl?: string | null
+  musicVolume?: number
+  onMusicVolumeChange?: (volume: number) => void
   onSave: (newAssUrl: string) => void
 }
 
@@ -154,6 +158,10 @@ export function ASSEditorModal({
   assUrl,
   assPath,
   videoUrl,
+  audioUrl,
+  musicUrl,
+  musicVolume,
+  onMusicVolumeChange,
   onSave: _onSave,
 }: ASSEditorModalProps) {
   const { toast } = useToast()
@@ -163,6 +171,13 @@ export function ASSEditorModal({
   const [positionDragEnabled, setPositionDragEnabled] = useState(false)
   const [showAssViewer, setShowAssViewer] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
+  const [showCompare, setShowCompare] = useState(false)
+  const [draftSnapshot, setDraftSnapshot] = useState<{
+    content?: string
+    updatedAt?: string
+    storageKey?: string
+  } | null>(null)
+  const [resolvedAssUrl, setResolvedAssUrl] = useState(assUrl)
   const storageKey = useMemo(
     () => assPath || extractStoragePath(assUrl) || assUrl,
     [assPath, assUrl]
@@ -170,6 +185,7 @@ export function ASSEditorModal({
 
   useEffect(() => {
     if (!isOpen) return
+    setResolvedAssUrl(assUrl)
     document.body.style.overflow = 'hidden'
     return () => {
       document.body.style.overflow = ''
@@ -183,11 +199,44 @@ export function ASSEditorModal({
     const loadASS = async () => {
       dispatch({ type: 'SET_LOADING', loading: true })
       try {
-        const response = await fetch(assUrl)
+        const response = await fetch(resolvedAssUrl)
+        let assContent: string | null = null
         if (!response.ok) {
-          throw new Error('Failed to load ASS file')
+          const shouldRefresh =
+            response.status === 400 || response.status === 401 || response.status === 403
+          if (shouldRefresh && storageKey && storageKey.startsWith('projects/')) {
+            const signResponse = await fetch('/api/captions/sign', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ storagePath: storageKey }),
+            })
+            if (signResponse.ok) {
+              const data = (await signResponse.json()) as { assUrl?: string }
+              if (data.assUrl) {
+                setResolvedAssUrl(data.assUrl)
+                const retryResponse = await fetch(data.assUrl)
+                if (retryResponse.ok) {
+                  assContent = await retryResponse.text()
+                } else {
+                  throw new Error('Failed to load ASS file')
+                }
+              } else {
+                throw new Error('Failed to refresh ASS URL')
+              }
+            } else {
+              throw new Error('Failed to refresh ASS URL')
+            }
+          } else {
+            throw new Error('Failed to load ASS file')
+          }
         }
-        const assContent = await response.text()
+
+        if (!assContent) {
+          if (!response.ok) {
+            throw new Error('Failed to load ASS file')
+          }
+          assContent = await response.text()
+        }
         originalAssRef.current = assContent
         let parsed = parseASS(assContent)
         let usedDraft = false
@@ -248,7 +297,7 @@ export function ASSEditorModal({
     return () => {
       isMounted = false
     }
-  }, [assUrl, isOpen, projectId, storageKey, toast, videoUrl])
+  }, [assUrl, isOpen, projectId, resolvedAssUrl, storageKey, toast, videoUrl])
 
   const handleDiscardDraft = () => {
     if (!originalAssRef.current) return
@@ -704,7 +753,7 @@ export function ASSEditorModal({
             size="sm"
             onClick={handleSaveDraft}
             title="Save captions and sync to storage"
-            className="rounded-lg border-secondary-700 text-secondary-200"
+            className="rounded-lg border-secondary-700 bg-secondary-900 text-secondary-100 hover:bg-secondary-800"
           >
             Save Draft
           </Button>
@@ -714,7 +763,7 @@ export function ASSEditorModal({
             size="sm"
             onClick={() => setShowAssViewer(true)}
             title="View the full ASS file"
-            className="rounded-lg border-secondary-700 text-secondary-200"
+            className="rounded-lg border-secondary-700 bg-secondary-900 text-secondary-100 hover:bg-secondary-800"
           >
             View ASS
           </Button>
@@ -722,9 +771,38 @@ export function ASSEditorModal({
             type="button"
             variant="outline"
             size="sm"
+            onClick={() => {
+              if (typeof window !== 'undefined') {
+                const stored = localStorage.getItem(getDraftKey(projectId, storageKey))
+                if (stored) {
+                  try {
+                    const parsed = JSON.parse(stored) as {
+                      content?: string
+                      updatedAt?: string
+                      storageKey?: string
+                    }
+                    setDraftSnapshot(parsed)
+                  } catch {
+                    setDraftSnapshot(null)
+                  }
+                } else {
+                  setDraftSnapshot(null)
+                }
+              }
+              setShowCompare(true)
+            }}
+            title="Compare original, draft, and current captions"
+            className="rounded-lg border-secondary-700 bg-secondary-900 text-secondary-100 hover:bg-secondary-800"
+          >
+            Compare Draft
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
             onClick={() => setShowHelp(true)}
             title="Editor help and shortcuts"
-            className="rounded-lg border-secondary-700 text-secondary-200"
+            className="rounded-lg border-secondary-700 bg-secondary-900 text-secondary-100 hover:bg-secondary-800"
           >
             Help
           </Button>
@@ -735,7 +813,7 @@ export function ASSEditorModal({
               size="sm"
               onClick={handleDiscardDraft}
               title="Discard local draft and reload original captions"
-              className="rounded-lg border-secondary-700 text-secondary-200"
+              className="rounded-lg border-secondary-700 bg-secondary-900 text-secondary-100 hover:bg-secondary-800"
             >
               Discard Draft
             </Button>
@@ -746,7 +824,7 @@ export function ASSEditorModal({
             size="sm"
             onClick={handleRequestClose}
             title="Close editor"
-            className="rounded-lg border-secondary-700 text-secondary-200"
+            className="rounded-lg border-secondary-700 bg-secondary-900 text-secondary-100 hover:bg-secondary-800"
           >
             <X className="h-4 w-4" />
           </Button>
@@ -767,6 +845,10 @@ export function ASSEditorModal({
           ) : (
             <VideoPlayer
               videoUrl={state.videoUrl}
+              audioUrl={audioUrl}
+              musicUrl={musicUrl}
+              musicVolume={musicVolume}
+              onMusicVolumeChange={onMusicVolumeChange}
               currentTime={state.currentTime}
               isPlaying={state.isPlaying}
               onTimeUpdate={(time) => dispatch({ type: 'SET_CURRENT_TIME', time })}
@@ -892,11 +974,72 @@ export function ASSEditorModal({
                 Close
               </Button>
             </div>
-            <textarea
-              readOnly
-              value={serializeASS(state.parsed)}
-              className="mt-4 h-[60vh] w-full resize-none rounded-xl border border-secondary-800 bg-secondary-950 px-4 py-3 font-mono text-xs text-secondary-200"
-            />
+              <textarea
+                readOnly
+                value={serializeASS(state.parsed)}
+                className="mt-4 h-[60vh] w-full resize-none rounded-xl border border-secondary-800 bg-secondary-900 px-4 py-3 font-mono text-xs text-secondary-100"
+              />
+          </div>
+        </div>
+      )}
+
+      {showCompare && state.parsed && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6">
+          <div className="w-full max-w-6xl rounded-2xl border border-secondary-800 bg-secondary-900 p-6 shadow-xl">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-secondary-100">Compare Captions</h3>
+                <p className="text-[11px] text-secondary-400">
+                  Storage key: {storageKey}
+                </p>
+                {draftSnapshot?.updatedAt && (
+                  <p className="text-[11px] text-secondary-500">
+                    Draft updated: {new Date(draftSnapshot.updatedAt).toLocaleString()}
+                  </p>
+                )}
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setShowCompare(false)}
+                className="rounded-lg border-secondary-700 bg-secondary-900 text-secondary-100 hover:bg-secondary-800"
+              >
+                Close
+              </Button>
+            </div>
+            <div className="mt-4 grid gap-4 lg:grid-cols-3">
+              <div className="space-y-2">
+                <h4 className="text-[11px] uppercase tracking-wide text-secondary-400">
+                  Original (Loaded)
+                </h4>
+                <textarea
+                  readOnly
+                  value={originalAssRef.current || ''}
+                  className="h-[60vh] w-full resize-none rounded-xl border border-secondary-800 bg-secondary-900 px-4 py-3 font-mono text-xs text-secondary-100"
+                />
+              </div>
+              <div className="space-y-2">
+                <h4 className="text-[11px] uppercase tracking-wide text-secondary-400">
+                  Draft (Local Storage)
+                </h4>
+                <textarea
+                  readOnly
+                  value={draftSnapshot?.content || ''}
+                  className="h-[60vh] w-full resize-none rounded-xl border border-secondary-800 bg-secondary-900 px-4 py-3 font-mono text-xs text-secondary-100"
+                />
+              </div>
+              <div className="space-y-2">
+                <h4 className="text-[11px] uppercase tracking-wide text-secondary-400">
+                  Current (Editor)
+                </h4>
+                <textarea
+                  readOnly
+                  value={serializeASS(state.parsed)}
+                  className="h-[60vh] w-full resize-none rounded-xl border border-secondary-800 bg-secondary-900 px-4 py-3 font-mono text-xs text-secondary-100"
+                />
+              </div>
+            </div>
           </div>
         </div>
       )}

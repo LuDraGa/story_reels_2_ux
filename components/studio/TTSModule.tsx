@@ -26,7 +26,8 @@ interface TTSModuleProps {
     transcriptionUrl: string,
     assUrl: string,
     metadata?: StudioState['captionMetadata'],
-    assPath?: string | null
+    assPath?: string | null,
+    srtPath?: string | null
   ) => void
   onCaptionStyleChange: (style: 'tiktok' | 'instagram' | 'youtube') => void
 }
@@ -215,7 +216,8 @@ export function TTSModule({
         data.transcriptionUrl,
         data.assUrl,
         data.metadata,
-        data.assPath
+        data.assPath,
+        data.srtPath
       )
 
       toast({
@@ -236,7 +238,8 @@ export function TTSModule({
 
   const isEmpty = script.trim() === ''
   const canGenerate = !isEmpty && selectedSpeakerId && !isGenerating
-  const canGenerateCaptions = audioUrl && !isGeneratingCaptions && !srtUrl
+  const canGenerateCaptions = audioUrl && !isGeneratingCaptions
+  const hasCaptions = !!srtUrl
 
   return (
     <Card className="w-full">
@@ -349,57 +352,60 @@ export function TTSModule({
                 </div>
 
                 {/* Caption Style Selection */}
-                {!srtUrl && (
-                  <div className="space-y-3 rounded-xl border border-accent-lavender/20 bg-accent-lavender/5 p-4">
-                    <label className="text-sm font-medium text-secondary-700">
-                      Caption Style
-                    </label>
-                    <select
-                      value={captionStyle}
-                      onChange={(e) => onCaptionStyleChange(e.target.value as 'tiktok' | 'instagram' | 'youtube')}
-                      className="w-full rounded-xl border border-secondary-300 bg-primary-100 p-3 text-secondary-700 focus:border-accent-lavender focus:outline-none focus:ring-2 focus:ring-accent-lavender/20"
-                    >
-                      <option value="tiktok">🎬 TikTok (bold yellow highlight)</option>
-                      <option value="instagram">📸 Instagram (clean white)</option>
-                      <option value="youtube">▶️ YouTube (standard)</option>
-                    </select>
+                <div className="space-y-3 rounded-xl border border-accent-lavender/20 bg-accent-lavender/5 p-4">
+                  <label className="text-sm font-medium text-secondary-700">
+                    Caption Style
+                  </label>
+                  <select
+                    value={captionStyle}
+                    onChange={(e) => onCaptionStyleChange(e.target.value as 'tiktok' | 'instagram' | 'youtube')}
+                    className="w-full rounded-xl border border-secondary-300 bg-primary-100 p-3 text-secondary-700 focus:border-accent-lavender focus:outline-none focus:ring-2 focus:ring-accent-lavender/20"
+                  >
+                    <option value="tiktok">🎬 TikTok (bold yellow highlight)</option>
+                    <option value="instagram">📸 Instagram (clean white)</option>
+                    <option value="youtube">▶️ YouTube (standard)</option>
+                  </select>
 
-                    <div className="flex items-start gap-2">
-                      <input
-                        type="checkbox"
-                        id="detectFocusWords"
-                        checked={detectFocusWords}
-                        onChange={(e) => setDetectFocusWords(e.target.checked)}
-                        className="mt-0.5 h-4 w-4 rounded border-secondary-300 text-accent-lavender focus:ring-accent-lavender/20"
-                      />
-                      <label htmlFor="detectFocusWords" className="text-sm text-secondary-600">
-                        <span className="font-medium">✨ Emphasize key words (AI-detected)</span>
-                        <p className="mt-0.5 text-xs text-secondary-500">
-                          Uses OpenAI GPT to detect important words for emphasis
-                        </p>
-                      </label>
-                    </div>
+                  <div className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      id="detectFocusWords"
+                      checked={detectFocusWords}
+                      onChange={(e) => setDetectFocusWords(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 rounded border-secondary-300 text-accent-lavender focus:ring-accent-lavender/20"
+                    />
+                    <label htmlFor="detectFocusWords" className="text-sm text-secondary-600">
+                      <span className="font-medium">✨ Emphasize key words (AI-detected)</span>
+                      <p className="mt-0.5 text-xs text-secondary-500">
+                        Uses OpenAI GPT to detect important words for emphasis
+                      </p>
+                    </label>
                   </div>
-                )}
+                  {hasCaptions && (
+                    <p className="text-xs text-secondary-500">
+                      Captions already generated. Regenerate to apply new style or focus settings.
+                    </p>
+                  )}
+                </div>
 
                 {/* Generate Captions Button */}
-                {!srtUrl && (
-                  <Button
-                    onClick={handleGenerateCaptions}
-                    disabled={!canGenerateCaptions}
-                    variant="outline"
-                    className="w-full border-accent-lavender text-accent-lavender hover:bg-accent-lavender/10"
-                  >
-                    {isGeneratingCaptions ? (
-                      <>
-                        <span className="mr-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-accent-lavender border-t-transparent"></span>
-                        Generating captions...
-                      </>
-                    ) : (
-                      '+ Generate Captions'
-                    )}
-                  </Button>
-                )}
+                <Button
+                  onClick={handleGenerateCaptions}
+                  disabled={!canGenerateCaptions}
+                  variant="outline"
+                  className="w-full border-accent-lavender text-accent-lavender hover:bg-accent-lavender/10"
+                >
+                  {isGeneratingCaptions ? (
+                    <>
+                      <span className="mr-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-accent-lavender border-t-transparent"></span>
+                      Generating captions...
+                    </>
+                  ) : hasCaptions ? (
+                    'Regenerate Captions'
+                  ) : (
+                    '+ Generate Captions'
+                  )}
+                </Button>
 
                 {/* Caption Generation Loading */}
                 {isGeneratingCaptions && (
