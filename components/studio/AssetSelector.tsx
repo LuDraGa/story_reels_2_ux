@@ -22,6 +22,7 @@ interface AssetSelectorProps {
   selectedUrls: string[]
   maxSelection?: number // undefined = unlimited, 1 = single, >1 = multiple
   onSelect: (urls: string[]) => void
+  requiredDuration?: number // Required total duration (e.g., audio duration)
 }
 
 export function AssetSelector({
@@ -31,6 +32,7 @@ export function AssetSelector({
   selectedUrls,
   maxSelection,
   onSelect,
+  requiredDuration,
 }: AssetSelectorProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [showUploader, setShowUploader] = useState(false)
@@ -41,23 +43,78 @@ export function AssetSelector({
     if (selectedUrls.length > 0) {
       loadAssets()
     }
-  }, [selectedUrls.length > 0]) // Only load when we have selections
+  }, [selectedUrls.length]) // Re-fetch when selection changes
 
   const loadAssets = async () => {
     try {
+      console.log('[AssetSelector] Loading assets for type:', type)
       const response = await fetch(`/api/assets/list?type=${type}`)
       if (response.ok) {
         const data = await response.json()
+        console.log('[AssetSelector] Loaded assets:', data.assets?.length || 0, 'assets')
+        console.log('[AssetSelector] Asset details:', data.assets?.map((a: Asset) => ({
+          name: a.file_name,
+          duration: a.duration_sec,
+          path: a.public_url?.substring(0, 80)
+        })))
         setAssets(data.assets || [])
+      } else {
+        console.error('[AssetSelector] Failed to load assets:', response.status, await response.text())
       }
     } catch (error) {
-      console.error('Failed to load assets:', error)
+      console.error('[AssetSelector] Failed to load assets:', error)
     }
   }
 
-  const selectedAssets = assets.filter((a) => selectedUrls.includes(a.public_url))
+  // Match assets by storage path (stable) instead of public URL (changes due to token)
+  const getBasePath = (url: string) => {
+    try {
+      const urlObj = new URL(url)
+      // Remove token parameter to get stable base path
+      return urlObj.origin + urlObj.pathname
+    } catch {
+      return url
+    }
+  }
+
+  const selectedBasePaths = selectedUrls.map(getBasePath)
+  const selectedAssets = assets.filter((a) => {
+    const assetBasePath = getBasePath(a.public_url)
+    return selectedBasePaths.includes(assetBasePath)
+  })
+
   const isSingleSelect = maxSelection === 1
   const hasSelection = selectedUrls.length > 0
+
+  // Calculate total duration for videos
+  const totalDuration = selectedAssets.reduce((sum, asset) => {
+    return sum + (asset.duration_sec || 0)
+  }, 0)
+
+  const hasSufficientDuration = !requiredDuration || totalDuration >= requiredDuration
+  const durationShortfall = requiredDuration ? Math.max(0, requiredDuration - totalDuration) : 0
+
+  // Debug logging
+  useEffect(() => {
+    console.log('[AssetSelector] Selection state:', {
+      type,
+      selectedUrlsCount: selectedUrls.length,
+      loadedAssetsCount: assets.length,
+      matchedAssetsCount: selectedAssets.length,
+      selectedBasePaths: selectedBasePaths.slice(0, 2), // Show first 2
+    })
+
+    if (type === 'video' && selectedAssets.length > 0) {
+      console.log('[AssetSelector] Duration check:', {
+        selectedCount: selectedAssets.length,
+        totalDuration,
+        requiredDuration,
+        hasSufficientDuration,
+        durationShortfall,
+        assetDurations: selectedAssets.map(a => ({ name: a.file_name, duration: a.duration_sec }))
+      })
+    }
+  }, [type, selectedUrls.length, selectedAssets.length, totalDuration, requiredDuration])
 
   const handleRemove = (url: string) => {
     onSelect(selectedUrls.filter((u) => u !== url))
@@ -71,6 +128,15 @@ export function AssetSelector({
     const mins = Math.floor(seconds / 60)
     const secs = Math.floor(seconds % 60)
     return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
+
+  const formatDetailedDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = Math.floor(seconds % 60)
+    if (mins > 0) {
+      return `${mins}m ${secs}s`
+    }
+    return `${secs}s`
   }
 
   return (
@@ -102,6 +168,38 @@ export function AssetSelector({
       {/* Selected Assets Display */}
       {hasSelection && (
         <div className="rounded-xl border border-primary-500/20 bg-primary-200 p-4">
+          {/* Total Duration Summary (videos only) */}
+          {type === 'video' && selectedAssets.length > 0 && (
+            <div className={`mb-3 p-3 rounded-lg ${
+              hasSufficientDuration
+                ? 'bg-accent-sage/10 border border-accent-sage/20'
+                : 'bg-red-50 border border-red-200'
+            }`}>
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-secondary-700">
+                  Total Duration:
+                </span>
+                <span className={`text-sm font-semibold ${
+                  hasSufficientDuration ? 'text-accent-sage' : 'text-red-600'
+                }`}>
+                  {formatDetailedDuration(totalDuration)}
+                  {requiredDuration && (
+                    <span className="text-secondary-500 font-normal">
+                      {' / '}
+                      {formatDetailedDuration(requiredDuration)}
+                      {' audio'}
+                    </span>
+                  )}
+                </span>
+              </div>
+              {!hasSufficientDuration && durationShortfall > 0 && (
+                <p className="text-xs text-red-600 mt-1">
+                  Need {formatDetailedDuration(durationShortfall)} more video content
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="space-y-3">
             {selectedAssets.map((asset) => (
               <div

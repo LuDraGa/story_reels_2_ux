@@ -24,6 +24,25 @@ export function AssetUploader({ type, onUploadComplete }: AssetUploaderProps) {
     ? 'video/mp4,video/webm,video/quicktime,video/x-msvideo,video/x-matroska'
     : 'audio/mpeg,audio/wav,audio/mp4,audio/aac,audio/ogg'
 
+  const detectVideoDuration = (file: File): Promise<number> => {
+    return new Promise((resolve, reject) => {
+      const video = document.createElement('video')
+      video.preload = 'metadata'
+
+      video.onloadedmetadata = () => {
+        window.URL.revokeObjectURL(video.src)
+        resolve(video.duration)
+      }
+
+      video.onerror = () => {
+        window.URL.revokeObjectURL(video.src)
+        reject(new Error('Failed to load video metadata'))
+      }
+
+      video.src = URL.createObjectURL(file)
+    })
+  }
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
@@ -48,11 +67,28 @@ export function AssetUploader({ type, onUploadComplete }: AssetUploaderProps) {
     setIsUploading(true)
     setUploadProgress(0)
 
+    // Detect video duration on client side for videos
+    let clientDuration: number | null = null
+    if (type === 'video') {
+      try {
+        console.log('[AssetUploader] Detecting video duration client-side...')
+        clientDuration = await detectVideoDuration(selectedFile)
+        console.log('[AssetUploader] Detected duration:', clientDuration, 'seconds')
+      } catch (error) {
+        console.warn('[AssetUploader] Failed to detect duration client-side:', error)
+      }
+    }
+
     try {
       // Create form data
       const formData = new FormData()
       formData.append('file', selectedFile)
       formData.append('type', type)
+
+      // Send client-detected duration if available
+      if (clientDuration) {
+        formData.append('client_duration', clientDuration.toString())
+      }
       if (tags) {
         formData.append('tags', tags)
       }

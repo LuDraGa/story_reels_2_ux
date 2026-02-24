@@ -84,6 +84,7 @@ export async function POST(req: NextRequest) {
     const file = formData.get('file') as File | null
     const fileType = (formData.get('type') as 'video' | 'audio') || 'video'
     const tags = (formData.get('tags') as string)?.split(',').filter(Boolean) || []
+    const clientDuration = formData.get('client_duration') ? parseFloat(formData.get('client_duration') as string) : null
 
     // Validate file
     if (!file) {
@@ -135,13 +136,14 @@ export async function POST(req: NextRequest) {
       .replace(/[^a-zA-Z0-9-_]/g, '_') // Replace invalid chars with underscore
       .substring(0, 50) // Limit length
 
-    const storagePath = `assets/${fileType}s/${user.id}/${timestamp}_${sanitizedName}.${fileExtension}`
+    const fileName = `${timestamp}_${sanitizedName}.${fileExtension}`
+    const storagePath = `backgrounds/${user.id}/${fileName}`
 
     console.log('[Assets] Uploading to:', storagePath)
 
-    // Upload to Supabase Storage
+    // Upload to Supabase Storage (backgrounds bucket)
     const { error: uploadError } = await supabase.storage
-      .from('projects')
+      .from('backgrounds')
       .upload(storagePath, file, {
         contentType: file.type,
         upsert: false,
@@ -159,7 +161,7 @@ export async function POST(req: NextRequest) {
 
     // Get public URL (signed URL for 1 year)
     const { data: urlData } = await supabase.storage
-      .from('projects')
+      .from('backgrounds')
       .createSignedUrl(storagePath, 31536000) // 1 year
 
     const publicUrl = urlData?.signedUrl || ''
@@ -175,7 +177,7 @@ export async function POST(req: NextRequest) {
 
     if (isVideo && publicUrl) {
       try {
-        console.log('[Assets] Probing video metadata...')
+        console.log('[Assets] Probing video metadata for URL:', publicUrl.substring(0, 100))
         const probeResult = await probeVideo(publicUrl)
         metadata = {
           duration_sec: probeResult.duration_sec,
@@ -184,10 +186,28 @@ export async function POST(req: NextRequest) {
           fps: probeResult.fps,
           codec: probeResult.codec,
         }
-        console.log('[Assets] Video metadata:', metadata)
+        console.log('[Assets] Video metadata probed successfully:', metadata)
       } catch (probeError) {
         console.error('[Assets] Failed to probe video:', probeError)
-        // Continue without metadata - not critical
+        console.error('[Assets] Probe error details:', {
+          message: probeError instanceof Error ? probeError.message : 'Unknown error',
+          url: publicUrl.substring(0, 100),
+          isVideo,
+        })
+
+        // Use client-detected duration as fallback
+        if (clientDuration && clientDuration > 0) {
+          console.log('[Assets] Using client-detected duration as fallback:', clientDuration)
+          metadata.duration_sec = clientDuration
+        }
+      }
+    } else {
+      console.log('[Assets] Skipping probe:', { isVideo, hasUrl: !!publicUrl })
+
+      // Still use client duration if available
+      if (clientDuration && clientDuration > 0 && isVideo) {
+        console.log('[Assets] Using client-detected duration:', clientDuration)
+        metadata.duration_sec = clientDuration
       }
     }
 
@@ -213,7 +233,7 @@ export async function POST(req: NextRequest) {
     if (dbError) {
       console.error('[Assets] Database error:', dbError)
       // Try to delete uploaded file
-      await supabase.storage.from('projects').remove([storagePath])
+      await supabase.storage.from('backgrounds').remove([storagePath])
       return NextResponse.json(
         { error: 'Failed to save asset metadata', details: dbError.message },
         { status: 500 }

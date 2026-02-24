@@ -92,10 +92,35 @@ export async function createAsset(formData: FormData) {
       return { error: 'Failed to upload file' }
     }
 
-    // Get public URL
+    // Get public URL (use signed URL for probing)
     const {
       data: { publicUrl },
     } = supabase.storage.from('backgrounds').getPublicUrl(storagePath)
+
+    // Get signed URL for probing
+    const { data: signedUrlData } = await supabase.storage
+      .from('backgrounds')
+      .createSignedUrl(storagePath, 60) // 1 minute for probing
+
+    // Probe video metadata if it's a video
+    let duration_sec: number | null = null
+    let width: number | null = null
+    let height: number | null = null
+
+    if (isVideo && signedUrlData?.signedUrl) {
+      try {
+        console.log('[Assets] Probing video metadata...')
+        const { probeVideo } = await import('@/lib/api/ffmpeg')
+        const probe = await probeVideo(signedUrlData.signedUrl)
+        duration_sec = probe.duration_sec
+        width = probe.width
+        height = probe.height
+        console.log('[Assets] Probe successful:', { duration_sec, width, height })
+      } catch (error) {
+        console.error('[Assets] Failed to probe video:', error)
+        // Continue without metadata
+      }
+    }
 
     // Create database record
     const tagsArray = tags
@@ -114,6 +139,9 @@ export async function createAsset(formData: FormData) {
         file_type: fileType, // 'video' or 'audio'
         storage_path: storagePath,
         file_size_mb: fileSizeMB,
+        duration_sec: duration_sec,
+        width: width,
+        height: height,
         tags: tagsArray,
       })
       .select()

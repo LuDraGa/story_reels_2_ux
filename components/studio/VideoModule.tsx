@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
@@ -52,11 +52,65 @@ export function VideoModule({
   const [isGenerating, setIsGenerating] = useState(false)
   const [progress, setProgress] = useState(0)
   const [showASSEditor, setShowASSEditor] = useState(false)
+  const [videoAssets, setVideoAssets] = useState<any[]>([])
+  const [detectedAudioDuration, setDetectedAudioDuration] = useState<number | null>(null)
 
   // Advanced settings state
   const [settings, setSettings] = useState<CompositionSettings>({
     musicVolume: 0.2, // 20% default (only setting currently supported by Modal FFmpeg API)
   })
+
+  // Fetch video assets to get duration metadata
+  useEffect(() => {
+    if (selectedVideos.length > 0) {
+      loadVideoAssets()
+    }
+  }, [selectedVideos])
+
+  // Detect audio duration if not provided
+  useEffect(() => {
+    if (audioUrl && !audioDuration) {
+      detectAudioDuration(audioUrl)
+    }
+  }, [audioUrl, audioDuration])
+
+  const loadVideoAssets = async () => {
+    try {
+      const response = await fetch('/api/assets/list?type=video')
+      if (response.ok) {
+        const data = await response.json()
+        setVideoAssets(data.assets || [])
+      }
+    } catch (error) {
+      console.error('Failed to load video assets:', error)
+    }
+  }
+
+  const detectAudioDuration = async (url: string) => {
+    try {
+      const audio = new Audio(url)
+      audio.addEventListener('loadedmetadata', () => {
+        setDetectedAudioDuration(audio.duration)
+      })
+    } catch (error) {
+      console.error('Failed to detect audio duration:', error)
+    }
+  }
+
+  // Calculate total video duration
+  const selectedVideoAssets = videoAssets.filter((asset) =>
+    selectedVideos.includes(asset.public_url)
+  )
+  const totalVideoDuration = selectedVideoAssets.reduce(
+    (sum, asset) => sum + (asset.duration_sec || 0),
+    0
+  )
+
+  // Use provided audioDuration or detected duration
+  const effectiveAudioDuration = audioDuration || detectedAudioDuration || 0
+
+  // Check if we have sufficient video content
+  const hasSufficientVideoDuration = totalVideoDuration >= effectiveAudioDuration
 
   const handleGenerate = async () => {
     if (!audioUrl) {
@@ -75,6 +129,22 @@ export function VideoModule({
       toast({
         title: 'No videos selected',
         description: 'Please select at least one background video',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    // Validate video duration vs audio duration
+    if (!hasSufficientVideoDuration && effectiveAudioDuration > 0) {
+      const shortfall = effectiveAudioDuration - totalVideoDuration
+      const formatTime = (secs: number) => {
+        const mins = Math.floor(secs / 60)
+        const s = Math.floor(secs % 60)
+        return mins > 0 ? `${mins}m ${s}s` : `${s}s`
+      }
+      toast({
+        title: 'Insufficient video content',
+        description: `Selected videos total ${formatTime(totalVideoDuration)}, but audio is ${formatTime(effectiveAudioDuration)}. Please select ${formatTime(shortfall)} more video content.`,
         variant: 'destructive',
       })
       return
@@ -133,7 +203,7 @@ export function VideoModule({
     }
   }
 
-  const canGenerate = audioUrl && selectedVideos.length > 0
+  const canGenerate = audioUrl && selectedVideos.length > 0 && hasSufficientVideoDuration
   const canEditCaptions = !!assUrl && !!projectId
   const previewVideoUrl = selectedVideos[0] || null
 
@@ -180,6 +250,7 @@ export function VideoModule({
               selectedUrls={selectedVideos}
               onSelect={onVideoSelect}
               maxSelection={5} // Allow up to 5 videos
+              requiredDuration={effectiveAudioDuration}
             />
 
             {/* Background Music Selector */}

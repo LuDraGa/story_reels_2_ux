@@ -102,17 +102,32 @@ export async function GET(req: NextRequest) {
     // Get signed URLs for all assets
     const assetsWithUrls = await Promise.all(
       (assets || []).map(async (asset) => {
-        // Create signed URL (1 year expiry)
-        // Use the 'backgrounds' bucket for background_assets table
+        // @ts-ignore
+        const storagePath = asset.storage_path
+        let signedUrl = ''
+
+        // Try new location first (backgrounds bucket)
         // @ts-ignore
         const { data: urlData, error: urlError } = await supabase.storage
           .from('backgrounds')
-          // @ts-ignore
-          .createSignedUrl(asset.storage_path, 31536000) // 1 year
+          .createSignedUrl(storagePath, 31536000) // 1 year
 
-        if (urlError) {
+        if (urlData?.signedUrl) {
+          signedUrl = urlData.signedUrl
+        } else if (urlError) {
+          console.log(`[Assets] Trying old location for ${storagePath}`)
+          // Try old location (projects bucket) for backward compatibility
           // @ts-ignore
-          console.error(`[Assets] Failed to create signed URL for ${asset.storage_path}:`, urlError)
+          const { data: oldUrlData } = await supabase.storage
+            .from('projects')
+            .createSignedUrl(storagePath, 31536000)
+
+          if (oldUrlData?.signedUrl) {
+            signedUrl = oldUrlData.signedUrl
+            console.log(`[Assets] Found in old location (projects bucket)`)
+          } else {
+            console.error(`[Assets] Failed to create signed URL for ${storagePath} in both buckets`)
+          }
         }
 
         return {
@@ -120,7 +135,7 @@ export async function GET(req: NextRequest) {
           id: asset.id,
           // @ts-ignore
           storage_path: asset.storage_path,
-          public_url: urlData?.signedUrl || '',
+          public_url: signedUrl,
           // @ts-ignore
           file_name: asset.file_name,
           // @ts-ignore

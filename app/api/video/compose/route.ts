@@ -96,17 +96,25 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Get audio duration from URL (probe it)
-    // For now, we'll estimate duration from background videos
-    // TODO: Probe audio file to get exact duration
-    const estimatedDuration = 30 // Default to 30 seconds, will be determined by FFmpeg
+    // Probe audio file to get actual duration
+    console.log('[Video Compose] Probing audio duration...')
+    let audioDuration = 30 // Fallback to 30 seconds if probe fails
+
+    try {
+      const { probeVideo } = await import('@/lib/api/ffmpeg')
+      const audioProbe = await probeVideo(audio_url)
+      audioDuration = audioProbe.duration_sec
+      console.log('[Video Compose] Audio duration:', audioDuration, 'seconds')
+    } catch (error) {
+      console.warn('[Video Compose] Failed to probe audio, using fallback duration:', error instanceof Error ? error.message : 'Unknown error')
+    }
 
     // Call FFmpeg API to compose video
     console.log('[Video Compose] Calling FFmpeg API...')
     const ffmpegResult = await composeReel({
       background_videos,
       audio_url,
-      duration: estimatedDuration,
+      duration: audioDuration,
       subtitles_url: resolvedSubtitlesUrl,
       subtitle_format: 'ass', // Always use ASS format for TikTok-style captions
       music_url,
