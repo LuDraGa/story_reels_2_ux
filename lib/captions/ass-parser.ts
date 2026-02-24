@@ -286,7 +286,7 @@ function parseDialogueLine(line: string, format: string[], index: number): Parse
         break
       case 'Text':
         caption.text = value
-        caption.plainText = stripASSTags(value)
+        caption.plainText = assTextToPlain(value)
         break
     }
   }
@@ -380,14 +380,15 @@ export function rebuildASSText(plainText: string, originalText: string): string 
 
   const rebuilt = words
     .map((word, index) => {
-      const spacer = index === 0 ? '' : ' '
+      const isLast = index === words.length - 1
+      const trailingSpace = isLast ? '' : ' '
       const segment = karaokeSegments[index]
       if (segment) {
         const tagContent = segment.tagContent.replace(/\\k\d+/i, `\\k${durations[index]}`)
         const postTags = segment.postTags ? `{${segment.postTags}}` : ''
-        return `{${tagContent}}${spacer}${word}${postTags}`
+        return `{${tagContent}}${word}${postTags}${trailingSpace}`
       }
-      return `{\\k${durations[index]}}${spacer}${word}`
+      return `{\\k${durations[index]}}${word}${trailingSpace}`
     })
     .join('')
 
@@ -492,8 +493,7 @@ export function serializeASS(parsed: ParsedASS): string {
  * Serialize ASSStyle to Style line
  */
 function serializeStyle(style: ASSStyle): string {
-  return [
-    'Style:',
+  const values = [
     style.Name,
     style.Fontname,
     style.Fontsize,
@@ -518,6 +518,8 @@ function serializeStyle(style: ASSStyle): string {
     style.MarginV,
     style.Encoding,
   ].join(',')
+
+  return `Style: ${values}`
 }
 
 /**

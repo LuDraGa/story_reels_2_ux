@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { Loader2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
-import { getCaptionAtTime, parseASS, serializeASS } from '@/lib/captions/ass-parser'
+import { getCaptionAtTime, parseASS, serializeASS, rebuildASSText } from '@/lib/captions/ass-parser'
 import type { ParsedCaption } from '@/lib/captions/ass-parser'
 import { assTextToPlain } from '@/lib/captions/ass-text'
 import { EditorSidebar } from './editor/EditorSidebar'
@@ -178,6 +178,7 @@ export function ASSEditorModal({
     storageKey?: string
   } | null>(null)
   const [resolvedAssUrl, setResolvedAssUrl] = useState(assUrl)
+  const skipNextLoadRef = useRef(false)
   const storageKey = useMemo(
     () => assPath || extractStoragePath(assUrl) || assUrl,
     [assPath, assUrl]
@@ -194,6 +195,13 @@ export function ASSEditorModal({
 
   useEffect(() => {
     if (!isOpen) return
+
+    // Skip reload if we just saved (state is already updated)
+    if (skipNextLoadRef.current) {
+      skipNextLoadRef.current = false
+      return
+    }
+
     let isMounted = true
 
     const loadASS = async () => {
@@ -316,10 +324,26 @@ export function ASSEditorModal({
     }
   }
 
-  const handleSaveDraft = () => {
-    if (!state.parsed) return
+  const handleSaveDraft = async () => {
+    if (!state.parsed || state.isSaving) return
+
     try {
+      dispatch({ type: 'SET_SAVING', saving: true })
+
       const content = serializeASS(state.parsed)
+
+      // Validate before saving
+      if (content.includes('Style:,')) {
+        toast({
+          title: 'Serialization Error',
+          description: 'Caption format is malformed. Please reload editor.',
+          variant: 'destructive',
+        })
+        dispatch({ type: 'SET_SAVING', saving: false })
+        return
+      }
+
+      // Save to localStorage first
       const payload = {
         assUrl,
         storageKey,
@@ -327,6 +351,8 @@ export function ASSEditorModal({
         updatedAt: new Date().toISOString(),
       }
       localStorage.setItem(getDraftKey(projectId, storageKey), JSON.stringify(payload))
+
+      // Re-parse to ensure consistency
       const reParsed = parseASS(content)
       dispatch({
         type: 'LOAD_ASS_SUCCESS',
@@ -337,14 +363,11 @@ export function ASSEditorModal({
         dispatch({ type: 'SELECT_CAPTION', index: state.selectedCaptionIndex })
       }
       dispatch({ type: 'SET_CURRENT_TIME', time: state.currentTime })
-      dispatch({ type: 'MARK_CLEAN' })
       setDraftLoaded(true)
-      toast({
-        title: 'Draft saved locally',
-        description: 'Uploading latest captions for video rendering...',
-      })
 
+      // Check if we can upload to storage
       if (!storageKey || storageKey.startsWith('http') || storageKey.startsWith('data:')) {
+        dispatch({ type: 'SAVE_SUCCESS' })
         toast({
           title: 'Draft saved locally',
           description: 'Sync skipped: no storage path available.',
@@ -352,7 +375,8 @@ export function ASSEditorModal({
         return
       }
 
-      fetch('/api/captions/save', {
+      // Upload to storage (blocking)
+      const response = await fetch('/api/captions/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -360,45 +384,48 @@ export function ASSEditorModal({
           content,
         }),
       })
-        .then(async (response) => {
-          if (!response.ok) {
-            const error = await response.json()
-            throw new Error(error.error || 'Failed to save captions')
-          }
-          return response.json()
-        })
-        .then((data: { assUrl: string }) => {
-          if (data.assUrl) {
-            _onSave(data.assUrl)
-          }
-          toast({
-            title: 'Draft synced',
-            description: 'Captions updated for the next video render.',
-          })
-        })
-        .catch((error) => {
-          console.error('Failed to sync ASS:', error)
-          toast({
-            title: 'Draft sync failed',
-            description: error instanceof Error ? error.message : 'Unable to sync captions',
-            variant: 'destructive',
-          })
-        })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to save captions')
+      }
+
+      const data = await response.json()
+
+      dispatch({ type: 'SAVE_SUCCESS' })
+
+      // Clear localStorage draft — storage is now the source of truth.
+      localStorage.removeItem(getDraftKey(projectId, storageKey))
+
+      // Skip next reload (we already updated state with correct content)
+      skipNextLoadRef.current = true
+
+      // Update URL in parent (triggers assUrl prop change, but we'll skip the reload)
+      if (data.assUrl) {
+        _onSave(data.assUrl)
+      }
+
+      toast({
+        title: 'Captions Saved',
+        description: 'Your edits have been saved to storage.',
+      })
     } catch (error) {
+      dispatch({ type: 'SET_SAVING', saving: false })
       console.error('Failed to save draft:', error)
       toast({
-        title: 'Draft save failed',
-        description: 'Unable to save draft locally.',
+        title: 'Save Failed',
+        description: error instanceof Error ? error.message : 'Unable to save captions',
         variant: 'destructive',
       })
     }
   }
 
   useEffect(() => {
-    if (!state.parsed || !state.isDirty) return
+    const parsed = state.parsed
+    if (!parsed || !state.isDirty) return
     const timeout = window.setTimeout(() => {
       try {
-        const content = serializeASS(state.parsed)
+        const content = serializeASS(parsed)
         const payload = {
           assUrl,
           storageKey,
@@ -568,16 +595,20 @@ export function ASSEditorModal({
       secondText = text.slice(mid)
     }
 
+    // Preserve ASS tags by rebuilding text with original structure
+    const firstTextWithTags = rebuildASSText(firstText, caption.text)
+    const secondTextWithTags = rebuildASSText(secondText, caption.text)
+
     const updatedFirst: ParsedCaption = {
       ...caption,
       end: splitTime,
-      text: firstText,
+      text: firstTextWithTags,
       plainText: firstText,
     }
     const updatedSecond: ParsedCaption = {
       ...caption,
       start: splitTime,
-      text: secondText,
+      text: secondTextWithTags,
       plainText: secondText,
     }
 
@@ -585,6 +616,18 @@ export function ASSEditorModal({
     const reindexed = reindexCaptions(captions)
     updateCaptions(reindexed, Math.min(targetIndex + 1, reindexed.length - 1))
   }
+
+  const handleTimeUpdate = useCallback((time: number) => {
+    dispatch({ type: 'SET_CURRENT_TIME', time })
+  }, [])
+
+  const handlePlayPause = useCallback((playing: boolean) => {
+    dispatch({ type: 'SET_PLAYING', playing })
+  }, [])
+
+  const handleLoadedMetadata = useCallback((duration: number) => {
+    dispatch({ type: 'SET_DURATION', duration })
+  }, [])
 
   const handleMergeCaption = () => {
     if (!state.parsed || state.selectedCaptionIndex === null) return
@@ -595,16 +638,49 @@ export function ASSEditorModal({
     if (targetIndex === -1 || targetIndex === captions.length - 1) return
     const current = captions[targetIndex]
     const next = captions[targetIndex + 1]
-    const mergedText = `${current.plainText || current.text} ${next.plainText || next.text}`.trim()
+
+    const mergedPlainText = `${current.plainText || current.text} ${next.plainText || next.text}`.trim()
+
+    // Preserve ASS tags by combining original texts and rebuilding
+    const combinedOriginal = `${current.text} ${next.text}`
+    const mergedTextWithTags = rebuildASSText(mergedPlainText, combinedOriginal)
+
     const merged: ParsedCaption = {
       ...current,
       end: next.end,
-      text: mergedText,
-      plainText: mergedText,
+      text: mergedTextWithTags,
+      plainText: mergedPlainText,
     }
     captions.splice(targetIndex, 2, merged)
     const reindexed = reindexCaptions(captions)
     updateCaptions(reindexed, Math.min(targetIndex, reindexed.length - 1))
+  }
+
+  const handleApplyDefaultStyleToAll = () => {
+    if (!state.parsed) return
+
+    // Strip inline position and alignment overrides from all captions
+    const updatedCaptions = state.parsed.captions.map((caption) => {
+      // Remove \pos() and \an# tags from text
+      let cleanedText = caption.text
+        .replace(/\\pos\([^)]*\)/gi, '')
+        .replace(/\\an\d+/gi, '')
+
+      // Remove empty tag blocks
+      cleanedText = cleanedText.replace(/\{\s*\}/g, '').trim()
+
+      return {
+        ...caption,
+        text: cleanedText,
+      }
+    })
+
+    updateCaptions(updatedCaptions, state.selectedCaptionIndex)
+
+    toast({
+      title: 'Default Style Applied',
+      description: `Default style applied to ${updatedCaptions.length} captions. Custom positioning removed.`,
+    })
   }
 
   const selectedCaptionOverrides = useMemo(() => {
@@ -624,6 +700,24 @@ export function ASSEditorModal({
       position: overrides.position ?? null,
     }
   }, [state.parsed, state.selectedCaptionIndex])
+
+  const handlePositionChange = useCallback((position: { x: number; y: number }) => {
+    if (!state.parsed || state.selectedCaptionIndex === null) return
+    const caption = state.parsed.captions.find(
+      (item) => item.index === state.selectedCaptionIndex
+    )
+    if (!caption) return
+    const alignment = selectedCaptionOverrides.alignment
+    const newText = updateCaptionOverrides(caption.text, {
+      alignment,
+      position,
+    })
+    dispatch({
+      type: 'UPDATE_CAPTION',
+      index: caption.index,
+      caption: { text: newText },
+    })
+  }, [state.parsed, state.selectedCaptionIndex, selectedCaptionOverrides.alignment])
 
   const handleSelectCaption = (index: number) => {
     dispatch({ type: 'SELECT_CAPTION', index })
@@ -752,10 +846,18 @@ export function ASSEditorModal({
             variant="outline"
             size="sm"
             onClick={handleSaveDraft}
+            disabled={state.isSaving}
             title="Save captions and sync to storage"
-            className="rounded-lg border-secondary-700 bg-secondary-900 text-secondary-100 hover:bg-secondary-800"
+            className="rounded-lg border-secondary-700 bg-secondary-900 text-secondary-100 hover:bg-secondary-800 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Save Draft
+            {state.isSaving ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              'Save Draft'
+            )}
           </Button>
           <Button
             type="button"
@@ -851,29 +953,14 @@ export function ASSEditorModal({
               onMusicVolumeChange={onMusicVolumeChange}
               currentTime={state.currentTime}
               isPlaying={state.isPlaying}
-              onTimeUpdate={(time) => dispatch({ type: 'SET_CURRENT_TIME', time })}
-              onPlayPause={(playing) => dispatch({ type: 'SET_PLAYING', playing })}
-              onLoadedMetadata={(duration) => dispatch({ type: 'SET_DURATION', duration })}
+              onTimeUpdate={handleTimeUpdate}
+              onPlayPause={handlePlayPause}
+              onLoadedMetadata={handleLoadedMetadata}
               captions={state.parsed?.captions}
               styles={state.parsed?.styles}
               scriptInfo={state.parsed?.scriptInfo}
               enablePositionDrag={positionDragEnabled}
-              onPositionChange={(position) => {
-                if (!state.parsed || state.selectedCaptionIndex === null) return
-                const caption = state.parsed.captions.find(
-                  (item) => item.index === state.selectedCaptionIndex
-                )
-                if (!caption) return
-                const newText = updateCaptionOverrides(caption.text, {
-                  alignment: selectedCaptionOverrides.alignment,
-                  position,
-                })
-                dispatch({
-                  type: 'UPDATE_CAPTION',
-                  index: caption.index,
-                  caption: { text: newText },
-                })
-              }}
+              onPositionChange={handlePositionChange}
             />
           )}
         </div>
@@ -934,6 +1021,7 @@ export function ASSEditorModal({
             onDeleteCaption={handleDeleteCaption}
             onSplitCaption={handleSplitCaption}
             onMergeCaption={handleMergeCaption}
+            onApplyDefaultStyleToAll={handleApplyDefaultStyleToAll}
           />
         ) : (
           <aside className="w-[420px] border-l border-secondary-800 bg-secondary-900/60 p-4">

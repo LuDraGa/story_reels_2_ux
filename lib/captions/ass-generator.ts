@@ -167,7 +167,7 @@ function groupWordsIntoDialogues(
       const karaokeWords = currentGroup.map((w, idx) =>
         wordToKaraoke(w, currentFocusWords[idx])
       )
-      const text = karaokeWords.join('')
+      const text = karaokeWords.join(' ')
 
       dialogues.push({
         start,
@@ -223,7 +223,7 @@ function groupWordsBySentence(
       const karaokeWords = currentGroup.map((w, idx) =>
         wordToKaraoke(w, currentFocusWords[idx])
       )
-      const text = karaokeWords.join('')
+      const text = karaokeWords.join(' ')
 
       dialogues.push({
         start,

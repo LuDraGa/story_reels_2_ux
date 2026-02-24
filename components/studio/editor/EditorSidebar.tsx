@@ -8,6 +8,7 @@ import { rebuildASSText } from '@/lib/captions/ass-parser'
 import { assTextToPlain } from '@/lib/captions/ass-text'
 import { Input } from '@/components/ui/input'
 import { CaptionList } from './CaptionList'
+import { DefaultStyleEditor } from './DefaultStyleEditor'
 
 interface EditorSidebarProps {
   captions: ParsedCaption[]
@@ -30,6 +31,7 @@ interface EditorSidebarProps {
   onDeleteCaption: () => void
   onSplitCaption: () => void
   onMergeCaption: () => void
+  onApplyDefaultStyleToAll: () => void
 }
 
 const MIN_CAPTION_GAP = 0.1
@@ -94,6 +96,7 @@ export function EditorSidebar({
   onDeleteCaption,
   onSplitCaption,
   onMergeCaption,
+  onApplyDefaultStyleToAll,
 }: EditorSidebarProps) {
   const selectedCaption = useMemo(
     () => captions.find((caption) => caption.index === selectedIndex) || null,
@@ -140,7 +143,7 @@ export function EditorSidebar({
       setPosYInput('')
       return
     }
-    setTextValue(assTextToPlain(selectedCaption.text) || selectedCaption.plainText || selectedCaption.text)
+    setTextValue(selectedCaption.plainText || assTextToPlain(selectedCaption.text) || selectedCaption.text)
     setStartInput(formatTimeInput(selectedCaption.start))
     setEndInput(formatTimeInput(selectedCaption.end))
     setPosXInput(position ? Math.round(position.x).toString() : '')
@@ -208,7 +211,17 @@ export function EditorSidebar({
 
   return (
     <aside className="h-full w-[420px] overflow-y-auto border-l border-secondary-800 bg-secondary-900/60 p-4">
-      <div className="mb-3 flex items-center justify-between">
+      {/* Default Style Editor */}
+      {selectedStyle && (
+        <DefaultStyleEditor
+          style={selectedStyle}
+          onUpdateStyle={(updates) => onUpdateStyle(selectedStyle.Name, updates)}
+          onApplyToAll={onApplyDefaultStyleToAll}
+          captionCount={captions.length}
+        />
+      )}
+
+      <div className="mb-3 mt-4 flex items-center justify-between">
         <div>
           <h3 className="text-sm font-semibold text-secondary-100">Captions</h3>
           <p className="text-xs text-secondary-400">{captions.length} lines</p>
