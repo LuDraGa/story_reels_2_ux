@@ -97,20 +97,32 @@ export async function POST(req: NextRequest) {
     }
 
     // Probe audio file to get actual duration
-    console.log('[Video Compose] Probing audio duration...')
+    console.log('[Video Compose] Probing audio duration from URL:', audio_url.substring(0, 100))
     let audioDuration = 30 // Fallback to 30 seconds if probe fails
 
     try {
       const { probeVideo } = await import('@/lib/api/ffmpeg')
+      console.log('[Video Compose] Calling probe API...')
       const audioProbe = await probeVideo(audio_url)
       audioDuration = audioProbe.duration_sec
-      console.log('[Video Compose] Audio duration:', audioDuration, 'seconds')
+      console.log('[Video Compose] Audio probe successful! Duration:', audioDuration, 'seconds')
     } catch (error) {
-      console.warn('[Video Compose] Failed to probe audio, using fallback duration:', error instanceof Error ? error.message : 'Unknown error')
+      console.error('[Video Compose] Audio probe FAILED:', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        audioUrl: audio_url.substring(0, 150),
+      })
+      console.warn('[Video Compose] Using fallback duration of 30 seconds')
     }
 
     // Call FFmpeg API to compose video
-    console.log('[Video Compose] Calling FFmpeg API...')
+    console.log('[Video Compose] Calling FFmpeg API with params:', {
+      backgroundVideosCount: background_videos.length,
+      duration: audioDuration,
+      hasSubtitles: !!resolvedSubtitlesUrl,
+      hasMusic: !!music_url,
+      musicVolume: music_volume,
+    })
     const ffmpegResult = await composeReel({
       background_videos,
       audio_url,
@@ -130,10 +142,15 @@ export async function POST(req: NextRequest) {
     })
 
     // Download composed video from FFmpeg API
-    console.log('[Video Compose] Downloading composed video...')
+    console.log('[Video Compose] Downloading composed video from:', ffmpegResult.output_url)
     const videoResponse = await fetch(ffmpegResult.output_url)
     if (!videoResponse.ok) {
-      throw new Error('Failed to download composed video from FFmpeg API')
+      console.error('[Video Compose] Download failed:', {
+        status: videoResponse.status,
+        statusText: videoResponse.statusText,
+        url: ffmpegResult.output_url,
+      })
+      throw new Error(`Failed to download composed video: ${videoResponse.status} ${videoResponse.statusText}`)
     }
     const videoBuffer = await videoResponse.arrayBuffer()
 

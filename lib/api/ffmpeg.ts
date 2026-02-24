@@ -173,11 +173,15 @@ export async function callFFmpegAPI(
 export async function composeReel(
   request: ComposeRequest
 ): Promise<OperationResponse> {
-  const response = await callFFmpegAPI('/ops/compose', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(request),
-  })
+  const response = await callFFmpegAPI(
+    '/ops/compose',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    },
+    600000 // 10 minutes timeout for video composition (concat filter with re-encoding is slow)
+  )
 
   return response.json()
 }

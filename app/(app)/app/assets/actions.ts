@@ -116,6 +116,21 @@ export async function createAsset(formData: FormData) {
         width = probe.width
         height = probe.height
         console.log('[Assets] Probe successful:', { duration_sec, width, height })
+
+        // Validate aspect ratio for reels (9:16 vertical)
+        if (width && height) {
+          const aspectRatio = width / height
+          const targetRatio = 9 / 16 // 0.5625
+          const tolerance = 0.05 // Allow 5% variance
+
+          if (Math.abs(aspectRatio - targetRatio) > tolerance) {
+            // Clean up uploaded file
+            await supabase.storage.from('backgrounds').remove([storagePath])
+            return {
+              error: `Invalid aspect ratio. Videos must be 9:16 vertical (e.g., 1080x1920, 720x1280). Your video is ${width}x${height} (${(aspectRatio * 16 / 9).toFixed(2)}:16)`
+            }
+          }
+        }
       } catch (error) {
         console.error('[Assets] Failed to probe video:', error)
         // Continue without metadata

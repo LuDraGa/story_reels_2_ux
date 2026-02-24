@@ -97,10 +97,22 @@ export function VideoModule({
     }
   }
 
-  // Calculate total video duration
-  const selectedVideoAssets = videoAssets.filter((asset) =>
-    selectedVideos.includes(asset.public_url)
-  )
+  // Match assets by base path (without token) like AssetSelector does
+  const getBasePath = (url: string) => {
+    try {
+      const urlObj = new URL(url)
+      return urlObj.origin + urlObj.pathname
+    } catch {
+      return url
+    }
+  }
+
+  const selectedBasePaths = selectedVideos.map(getBasePath)
+  const selectedVideoAssets = videoAssets.filter((asset) => {
+    const assetBasePath = getBasePath(asset.public_url)
+    return selectedBasePaths.includes(assetBasePath)
+  })
+
   const totalVideoDuration = selectedVideoAssets.reduce(
     (sum, asset) => sum + (asset.duration_sec || 0),
     0
@@ -111,6 +123,21 @@ export function VideoModule({
 
   // Check if we have sufficient video content
   const hasSufficientVideoDuration = totalVideoDuration >= effectiveAudioDuration
+
+  // Debug logging
+  useEffect(() => {
+    console.log('[VideoModule] Duration validation:', {
+      selectedVideosCount: selectedVideos.length,
+      loadedVideoAssetsCount: videoAssets.length,
+      matchedVideoAssetsCount: selectedVideoAssets.length,
+      totalVideoDuration,
+      effectiveAudioDuration,
+      audioDuration,
+      detectedAudioDuration,
+      hasSufficientVideoDuration,
+      canGenerate: audioUrl && selectedVideos.length > 0 && hasSufficientVideoDuration,
+    })
+  }, [selectedVideos.length, selectedVideoAssets.length, totalVideoDuration, effectiveAudioDuration, hasSufficientVideoDuration])
 
   const handleGenerate = async () => {
     if (!audioUrl) {
