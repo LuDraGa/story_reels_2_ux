@@ -33,10 +33,12 @@ interface ComposeRequest {
 
 interface ComposeResponse {
   video_url: string
-  storage_path: string
+  storage_path: string | null
   duration_sec?: number
   file_size_mb?: number
   processing_time_sec?: number
+  is_temporary_url?: boolean
+  temporary_url_expires_hours?: number
 }
 
 // ============================================================================
@@ -177,39 +179,61 @@ export async function POST(req: NextRequest) {
       storagePath = `projects/oneoff/${sessionId}/videos/${timestamp}_composed.mp4`
     }
 
-    console.log('[Video Compose] Uploading to Supabase:', storagePath)
+    // Check if video is too large for Supabase (Free tier: 50MB, Pro: 5GB)
+    // We'll use 100MB as safe threshold
+    const MAX_SUPABASE_UPLOAD_MB = 100
+    const videoSizeMB = videoBuffer.byteLength / 1024 / 1024
 
-    // Upload to Supabase Storage
-    const { error: uploadError } = await supabase.storage
-      .from('projects')
-      .upload(storagePath, videoBuffer, {
-        contentType: 'video/mp4',
-        upsert: false,
-      })
+    let signedUrl: string
+    let isTemporaryUrl = false
 
-    if (uploadError) {
-      console.error('[Video Compose] Upload error:', uploadError)
-      return NextResponse.json(
-        { error: 'Failed to upload video', details: uploadError.message },
-        { status: 500 }
-      )
-    }
+    if (videoSizeMB > MAX_SUPABASE_UPLOAD_MB) {
+      console.log(`[Video Compose] Video too large (${videoSizeMB.toFixed(2)}MB), using temporary Modal URL`)
+      // Use Modal's output URL directly (valid for 24 hours)
+      signedUrl = ffmpegResult.output_url
+      isTemporaryUrl = true
+    } else {
+      console.log('[Video Compose] Uploading to Supabase:', storagePath)
 
-    console.log('[Video Compose] Video uploaded successfully')
+      // Upload to Supabase Storage
+      const { error: uploadError } = await supabase.storage
+        .from('projects')
+        .upload(storagePath, videoBuffer, {
+          contentType: 'video/mp4',
+          upsert: false,
+        })
 
-    // Get signed URL (1 year expiry)
-    const { data: urlData } = await supabase.storage
-      .from('projects')
-      .createSignedUrl(storagePath, 31536000) // 1 year
+      if (uploadError) {
+        // If upload fails due to size limit, fall back to Modal URL
+        if (uploadError.message?.includes('exceeded') || uploadError.statusCode === '413') {
+          console.warn('[Video Compose] Upload exceeded limit, using temporary Modal URL')
+          signedUrl = ffmpegResult.output_url
+          isTemporaryUrl = true
+        } else {
+          console.error('[Video Compose] Upload error:', uploadError)
+          return NextResponse.json(
+            { error: 'Failed to upload video', details: uploadError.message },
+            { status: 500 }
+          )
+        }
+      } else {
+        console.log('[Video Compose] Video uploaded successfully')
 
-    const signedUrl = urlData?.signedUrl || ''
+        // Get signed URL (1 year expiry)
+        const { data: urlData } = await supabase.storage
+          .from('projects')
+          .createSignedUrl(storagePath, 31536000) // 1 year
 
-    if (!signedUrl) {
-      console.error('[Video Compose] Failed to generate signed URL')
-      return NextResponse.json(
-        { error: 'Failed to generate signed URL' },
-        { status: 500 }
-      )
+        signedUrl = urlData?.signedUrl || ''
+
+        if (!signedUrl) {
+          console.error('[Video Compose] Failed to generate signed URL')
+          return NextResponse.json(
+            { error: 'Failed to generate signed URL' },
+            { status: 500 }
+          )
+        }
+      }
     }
 
     if (user && project_id) {
@@ -246,10 +270,12 @@ export async function POST(req: NextRequest) {
     // Build response
     const response: ComposeResponse = {
       video_url: signedUrl,
-      storage_path: storagePath,
+      storage_path: isTemporaryUrl ? null : storagePath,
       duration_sec: ffmpegResult.duration_sec || undefined,
       file_size_mb: ffmpegResult.file_size_mb || undefined,
       processing_time_sec: ffmpegResult.processing_time_sec || undefined,
+      is_temporary_url: isTemporaryUrl,
+      temporary_url_expires_hours: isTemporaryUrl ? 24 : undefined,
     }
 
     console.log('[Video Compose] Success:', {

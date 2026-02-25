@@ -54,6 +54,9 @@ export function VideoModule({
   const [showASSEditor, setShowASSEditor] = useState(false)
   const [videoAssets, setVideoAssets] = useState<any[]>([])
   const [detectedAudioDuration, setDetectedAudioDuration] = useState<number | null>(null)
+  const [isTemporaryUrl, setIsTemporaryUrl] = useState(false)
+  const [temporaryUrlExpires, setTemporaryUrlExpires] = useState<number | null>(null)
+  const [videoFileSize, setVideoFileSize] = useState<number | null>(null)
 
   // Advanced settings state
   const [settings, setSettings] = useState<CompositionSettings>({
@@ -213,10 +216,23 @@ export function VideoModule({
       const data = await response.json()
       onVideoGenerated(data.video_url)
 
-      toast({
-        title: 'Video generated successfully!',
-        description: `Video duration: ${data.duration_sec?.toFixed(1)}s`,
-      })
+      // Track if this is a temporary URL
+      setIsTemporaryUrl(data.is_temporary_url || false)
+      setTemporaryUrlExpires(data.temporary_url_expires_hours || null)
+      setVideoFileSize(data.file_size_mb || null)
+
+      if (data.is_temporary_url) {
+        toast({
+          title: 'Video generated successfully!',
+          description: `Video too large for storage (${data.file_size_mb?.toFixed(0)}MB). Download within ${data.temporary_url_expires_hours}h.`,
+          variant: 'default',
+        })
+      } else {
+        toast({
+          title: 'Video generated successfully!',
+          description: `Video duration: ${data.duration_sec?.toFixed(1)}s`,
+        })
+      }
     } catch (error) {
       console.error('Video generation error:', error)
       toast({
@@ -346,6 +362,25 @@ export function VideoModule({
                 <label className="text-sm font-medium text-secondary-700">
                   Video Preview
                 </label>
+
+                {/* Temporary URL Warning */}
+                {isTemporaryUrl && temporaryUrlExpires && (
+                  <div className="rounded-xl border-2 border-yellow-500/20 bg-yellow-50 p-4">
+                    <div className="flex items-start gap-3">
+                      <span className="text-2xl">⚠️</span>
+                      <div className="flex-1">
+                        <h4 className="font-semibold text-yellow-800 mb-1">
+                          Download Required - Link Expires in {temporaryUrlExpires} Hours
+                        </h4>
+                        <p className="text-sm text-yellow-700">
+                          This video is too large to store permanently ({videoFileSize?.toFixed(0)}MB). Please download it now.
+                          The link will expire after {temporaryUrlExpires} hours.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="rounded-2xl border-2 border-accent-sage/20 bg-primary-300 overflow-hidden">
                   <video
                     src={videoUrl}
@@ -362,7 +397,7 @@ export function VideoModule({
                     Open in New Tab
                   </Button>
                   <Button
-                    variant="outline"
+                    variant={isTemporaryUrl ? 'default' : 'outline'}
                     size="sm"
                     onClick={() => {
                       const a = document.createElement('a')
@@ -370,8 +405,9 @@ export function VideoModule({
                       a.download = 'reel.mp4'
                       a.click()
                     }}
+                    className={isTemporaryUrl ? 'bg-yellow-600 hover:bg-yellow-700' : ''}
                   >
-                    Download
+                    {isTemporaryUrl ? '⬇️ Download Now (Required)' : 'Download'}
                   </Button>
                 </div>
               </div>
