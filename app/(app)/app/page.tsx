@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { useStudioState } from '@/hooks/useStudioState'
@@ -13,6 +12,7 @@ import { ExportModule } from '@/components/studio/ExportModule'
 import { ProjectCard } from '@/components/dashboard/ProjectCard'
 import { CreateProjectDialog } from '@/components/dashboard/CreateProjectDialog'
 import { getSupabaseClient } from '@/lib/supabase/client'
+import { useSignInModal } from '@/lib/auth/modal-context'
 import { getProjects } from './actions'
 import type { User } from '@supabase/supabase-js'
 
@@ -115,6 +115,7 @@ function ProjectsDashboard() {
 // ─── Not logged in: One-off Studio ───────────────────────────────────────────
 
 function Studio() {
+  const { openSignIn } = useSignInModal()
   const {
     state,
     updateSourceText,
@@ -183,14 +184,13 @@ function Studio() {
               Sign in to access your dashboard and manage unlimited projects.
             </p>
           </div>
-          <Link href="/login">
-            <Button
-              variant="outline"
-              className="border-accent-lavender text-accent-lavender hover:bg-accent-lavender/10 rounded-xl whitespace-nowrap"
-            >
-              Sign In
-            </Button>
-          </Link>
+          <Button
+            onClick={openSignIn}
+            variant="outline"
+            className="border-accent-lavender text-accent-lavender hover:bg-accent-lavender/10 rounded-xl whitespace-nowrap"
+          >
+            Sign In
+          </Button>
         </div>
       </Card>
     </div>
