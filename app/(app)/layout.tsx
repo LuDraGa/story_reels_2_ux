@@ -30,7 +30,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       const { error } = await supabase.auth.signOut()
       if (error) throw error
       toast({ title: 'Signed out', description: 'You have been signed out successfully' })
-      router.push('/')
       router.refresh()
     } catch (error) {
       console.error('Sign out error:', error)
