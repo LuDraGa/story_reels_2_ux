@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/hooks/use-toast'
-import { getAssets, createAsset, deleteAsset } from './actions'
+import { getAssets, createAssetRecord, deleteAsset } from './actions'
+import { getSupabaseClient } from '@/lib/supabase/client'
 
 interface Asset {
   id: string
@@ -226,12 +227,36 @@ function UploadDialog({ onClose, onSuccess }: UploadDialogProps) {
     setIsUploading(true)
 
     try {
-      const formData = new FormData()
-      formData.append('title', title)
-      formData.append('tags', tags)
-      formData.append('file', file)
+      // Step 1: Upload file directly to Supabase Storage from the browser
+      // (bypasses Vercel's 4.5MB serverless function body limit)
+      const supabase = getSupabaseClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Not authenticated')
 
-      const result = await createAsset(formData)
+      const timestamp = Date.now()
+      const fileExtension = file.name.split('.').pop()?.toLowerCase() || 'mp4'
+      const sanitizedName = file.name
+        .replace(/\.[^/.]+$/, '')
+        .replace(/[^a-zA-Z0-9-_]/g, '_')
+        .substring(0, 50)
+      const fileName = `${timestamp}_${sanitizedName}.${fileExtension}`
+      const storagePath = `backgrounds/${user.id}/${fileName}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('backgrounds')
+        .upload(storagePath, file, { contentType: file.type, upsert: false })
+
+      if (uploadError) throw new Error('Failed to upload file: ' + uploadError.message)
+
+      // Step 2: Save DB record + probe video metadata via server action (no file bytes)
+      const result = await createAssetRecord(
+        storagePath,
+        title,
+        tags,
+        file.name,
+        file.type,
+        file.size / 1024 / 1024
+      )
 
       if (result.error) {
         throw new Error(result.error)

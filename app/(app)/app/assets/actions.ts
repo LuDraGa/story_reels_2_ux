@@ -42,6 +42,91 @@ export async function getAssets() {
   return { assets: assetsWithUrls }
 }
 
+/**
+ * createAssetRecord — called after the client has already uploaded the file
+ * directly to Supabase Storage. Probes video metadata and saves the DB record.
+ * No file bytes pass through Vercel — avoids the 4.5MB function body limit.
+ */
+export async function createAssetRecord(
+  storagePath: string,
+  title: string,
+  tags: string,
+  fileName: string,
+  fileType: string,
+  fileSizeMB: number
+) {
+  const supabase = await createSupabaseServerClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorized' }
+
+  const isVideo = fileType.startsWith('video/')
+  const tagsArray = tags.split(',').map((t) => t.trim()).filter(Boolean)
+
+  let duration_sec: number | null = null
+  let width: number | null = null
+  let height: number | null = null
+
+  if (isVideo) {
+    try {
+      const { data: signedUrlData } = await supabase.storage
+        .from('backgrounds')
+        .createSignedUrl(storagePath, 60)
+
+      if (signedUrlData?.signedUrl) {
+        console.log('[Assets] Probing video metadata...')
+        const { probeVideo } = await import('@/lib/api/ffmpeg')
+        const probe = await probeVideo(signedUrlData.signedUrl)
+        duration_sec = probe.duration_sec
+        width = probe.width
+        height = probe.height
+        console.log('[Assets] Probe successful:', { duration_sec, width, height })
+
+        if (width && height) {
+          const aspectRatio = width / height
+          const targetRatio = 9 / 16
+          if (Math.abs(aspectRatio - targetRatio) > 0.05) {
+            await supabase.storage.from('backgrounds').remove([storagePath])
+            return {
+              error: `Invalid aspect ratio. Videos must be 9:16 vertical (e.g., 1080x1920, 720x1280). Your video is ${width}x${height}.`
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[Assets] Failed to probe video:', err)
+    }
+  }
+
+  // @ts-ignore - Supabase type inference issue
+  const { data: asset, error: dbError } = await supabase
+    .from('background_assets')
+    // @ts-ignore
+    .insert({
+      user_id: user.id,
+      name: title.trim(),
+      file_name: fileName,
+      file_type: isVideo ? 'video' : 'audio',
+      storage_path: storagePath,
+      file_size_mb: fileSizeMB,
+      duration_sec,
+      width,
+      height,
+      tags: tagsArray,
+    })
+    .select()
+    .single()
+
+  if (dbError) {
+    console.error('Database error:', dbError)
+    await supabase.storage.from('backgrounds').remove([storagePath])
+    return { error: 'Failed to save asset' }
+  }
+
+  revalidatePath('/app/assets')
+  return { success: true, asset }
+}
+
 export async function createAsset(formData: FormData) {
   const supabase = await createSupabaseServerClient()
 
