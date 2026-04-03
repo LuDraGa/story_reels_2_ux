@@ -24,6 +24,7 @@ export async function GET(request: Request) {
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
+        db: { schema: 'story_reels' },
         cookies: {
           getAll() {
             return cookieStore.getAll()

@@ -7,10 +7,11 @@ export async function updateSession(request: NextRequest) {
     request,
   })
 
-  const supabase = createServerClient<Database>(
+  const supabase = createServerClient<Database, 'story_reels'>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      db: { schema: 'story_reels' },
       cookies: {
         getAll() {
           return request.cookies.getAll()
@@ -38,8 +39,15 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  // Protected routes: /app/*
-  if (request.nextUrl.pathname.startsWith('/app') && !user) {
+  // Protected sub-routes: /app/projects/*, /app/assets, /app/queue
+  // /app itself is open to everyone — auth state handled conditionally in the page
+  const pathname = request.nextUrl.pathname
+  const isProtectedRoute =
+    pathname.startsWith('/app/projects') ||
+    pathname.startsWith('/app/assets') ||
+    pathname.startsWith('/app/queue')
+
+  if (isProtectedRoute && !user) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)

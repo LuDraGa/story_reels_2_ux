@@ -1,11 +1,3 @@
-export default function PublicLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="min-h-screen bg-primary-100 bg-gradient-mesh">
-      {children}
-    </div>
-  );
+export default function PublicLayout({ children }: { children: React.ReactNode }) {
+  return <>{children}</>
 }
