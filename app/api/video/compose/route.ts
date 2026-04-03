@@ -247,6 +247,7 @@ export async function POST(req: NextRequest) {
       if (projectError) {
         console.warn('[Video Compose] Skipping video asset save:', projectError.message)
       } else {
+        // @ts-ignore - schema type inference
         const { error: assetError } = await supabase.from('video_assets').insert({
           project_id,
           storage_path: storagePath,

@@ -59,8 +59,11 @@ export async function getProjectDetails(projectId: string) {
     .order('created_at', { ascending: false })
     .limit(1)
 
+  const audioList = audioAssets as any[]
+  const videoList = videoAssets as any[]
+
   let audioSignedUrl: string | null = null
-  const audioPath = audioAssets?.[0]?.storage_path
+  const audioPath = audioList?.[0]?.storage_path
   if (audioPath) {
     const { data: signedAudio } = await supabase.storage
       .from('projects')
@@ -69,7 +72,7 @@ export async function getProjectDetails(projectId: string) {
   }
 
   let videoSignedUrl: string | null = null
-  const videoPath = videoAssets?.[0]?.storage_path
+  const videoPath = videoList?.[0]?.storage_path
   if (videoPath) {
     const { data: signedVideo } = await supabase.storage
       .from('projects')
@@ -80,8 +83,8 @@ export async function getProjectDetails(projectId: string) {
   return {
     project,
     script: scriptVersions?.[0] || null,
-    audio: audioAssets?.[0] ? { ...audioAssets[0], signedUrl: audioSignedUrl } : null,
-    video: videoAssets?.[0] ? { ...videoAssets[0], signedUrl: videoSignedUrl } : null,
+    audio: audioList?.[0] ? { ...audioList[0], signedUrl: audioSignedUrl } : null,
+    video: videoList?.[0] ? { ...videoList[0], signedUrl: videoSignedUrl } : null,
   }
 }
 

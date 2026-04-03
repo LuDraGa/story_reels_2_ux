@@ -293,6 +293,7 @@ export function useStudioState() {
       assUrl: null,
       transcriptionUrl: null,
       assPath: null,
+      srtPath: null,
       captionStyle: 'tiktok',
       captionMetadata: null,
       selectedVideos: [],
